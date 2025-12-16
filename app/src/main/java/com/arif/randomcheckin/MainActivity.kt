@@ -15,6 +15,12 @@ import kotlinx.coroutines.launch
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        if (android.os.Build.VERSION.SDK_INT >= 33) {
+            requestPermissions(
+                arrayOf(android.Manifest.permission.POST_NOTIFICATIONS),
+                1001
+            )
+        }
         setContent {
             RandomCheckInApp()
         }
@@ -90,6 +96,14 @@ fun GoalListScreen() {
 
         Button(onClick = { showAddScreen = true }) {
             Text("Add goal")
+        }
+        Spacer(modifier = Modifier.height(12.dp))
+
+        Button(onClick = {
+            com.arif.randomcheckin.notifications.NotificationHelper
+                .showCheckInNotification(context)
+        }) {
+            Text("Test notification")
         }
     }
 }

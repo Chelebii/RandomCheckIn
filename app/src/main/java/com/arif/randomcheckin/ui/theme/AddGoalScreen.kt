@@ -14,6 +14,7 @@ fun AddGoalScreen(
     var title by remember { mutableStateOf("") }
     var description by remember { mutableStateOf("") }
     var endDate by remember { mutableStateOf("") }
+    var dateError by remember { mutableStateOf<String?>(null) }
 
     Column(
         modifier = Modifier
@@ -44,15 +45,30 @@ fun AddGoalScreen(
 
         OutlinedTextField(
             value = endDate,
-            onValueChange = { endDate = it },
+            onValueChange = {
+                endDate = it
+                dateError = null
+            },
             label = { Text("End date (örn: 31.12.2025)") },
-            modifier = Modifier.fillMaxWidth()
+            modifier = Modifier.fillMaxWidth(),
+            isError = dateError != null,
+            supportingText = {
+                if (dateError != null) {
+                    Text(dateError!!)
+                }
+            }
         )
 
         Spacer(modifier = Modifier.height(24.dp))
 
         Row {
-            Button(onClick = { onSave(title, description, endDate) }) {
+            Button(onClick = {
+                if (endDate.isValidGoalDate()) {
+                    onSave(title, description, endDate.trim())
+                } else {
+                    dateError = "Tarih dd.MM.yyyy ve yıl ≤ 2066 olmalı"
+                }
+            }) {
                 Text("Save")
             }
 
@@ -63,4 +79,16 @@ fun AddGoalScreen(
             }
         }
     }
+}
+
+private fun String.isValidGoalDate(): Boolean {
+    val parts = trim().split('.')
+    if (parts.size != 3) return false
+    val day = parts[0].toIntOrNull() ?: return false
+    val month = parts[1].toIntOrNull() ?: return false
+    val year = parts[2].toIntOrNull() ?: return false
+    if (day !in 1..31) return false
+    if (month !in 1..12) return false
+    if (year !in 1..2066) return false
+    return true
 }

@@ -1,11 +1,16 @@
 package com.arif.randomcheckin.notifications
 
+import android.Manifest
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.os.Build
+import androidx.core.app.NotificationCompat
+import androidx.core.app.NotificationManagerCompat
+import androidx.core.content.ContextCompat
 import com.arif.randomcheckin.R
 
 object NotificationHelper {
@@ -15,6 +20,9 @@ object NotificationHelper {
     private const val NOTIF_ID = 1001
 
     fun showCheckInNotification(context: Context) {
+        if (!notificationsEnabled(context)) {
+            return
+        }
         createChannelIfNeeded(context)
 
         val intent = Intent(context, CheckInActivity::class.java).apply {
@@ -28,16 +36,21 @@ object NotificationHelper {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
-        val notification = androidx.core.app.NotificationCompat.Builder(context, CHANNEL_ID)
+        // Force high-visibility notification so users actually see the reminder
+        val notification = NotificationCompat.Builder(context, CHANNEL_ID)
             .setSmallIcon(R.mipmap.ic_launcher)
             .setContentTitle("Günlük check-in")
             .setContentText("Bugün için kısa bir not ekle.")
+            .setStyle(NotificationCompat.BigTextStyle().bigText("Bugün için kısa bir not ekle."))
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setDefaults(NotificationCompat.DEFAULT_ALL)
+            .setCategory(NotificationCompat.CATEGORY_REMINDER)
+            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
             .setContentIntent(pendingIntent)
             .setAutoCancel(true)
             .build()
 
-        androidx.core.app.NotificationManagerCompat.from(context)
-            .notify(NOTIF_ID, notification)
+        NotificationManagerCompat.from(context).notify(NOTIF_ID, notification)
     }
 
     private fun createChannelIfNeeded(context: Context) {
@@ -48,9 +61,21 @@ object NotificationHelper {
             val channel = NotificationChannel(
                 CHANNEL_ID,
                 CHANNEL_NAME,
-                NotificationManager.IMPORTANCE_DEFAULT
+                NotificationManager.IMPORTANCE_HIGH
             )
             manager.createNotificationChannel(channel)
         }
+    }
+
+    private fun notificationsEnabled(context: Context): Boolean {
+        if (Build.VERSION.SDK_INT >= 33 &&
+            ContextCompat.checkSelfPermission(
+                context,
+                Manifest.permission.POST_NOTIFICATIONS
+            ) != PackageManager.PERMISSION_GRANTED
+        ) {
+            return false
+        }
+        return NotificationManagerCompat.from(context).areNotificationsEnabled()
     }
 }
