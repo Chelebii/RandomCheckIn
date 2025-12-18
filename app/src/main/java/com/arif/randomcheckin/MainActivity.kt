@@ -222,19 +222,6 @@ fun GoalListScreen(
                 ) {
                     Text(if (isLimitReached) "Goal limit reached" else "Add goal")
                 }
-
-                Spacer(modifier = Modifier.height(16.dp))
-
-                Button(
-                    onClick = {
-                        com.arif.randomcheckin.notifications.NotificationHelper
-                            .showCheckInNotification(context)
-                    },
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = ButtonDefaults.buttonColors(containerColor = colorScheme.secondaryContainer)
-                ) {
-                    Text("Test notification", color = colorScheme.onSecondaryContainer)
-                }
             }
 
             if (pendingDeleteGoal != null) {
