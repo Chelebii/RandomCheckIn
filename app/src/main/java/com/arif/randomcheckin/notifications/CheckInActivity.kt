@@ -1,6 +1,6 @@
 package com.arif.randomcheckin.notifications
 
-
+import com.arif.randomcheckin.data.GoalStore
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -9,7 +9,6 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import com.arif.randomcheckin.data.model.GoalStore
 import kotlinx.coroutines.launch
 
 class CheckInActivity : ComponentActivity() {

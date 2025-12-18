@@ -6,7 +6,7 @@ import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.Worker
 import androidx.work.WorkerParameters
-import com.arif.randomcheckin.data.model.GoalStore
+import com.arif.randomcheckin.data.GoalStore
 import com.arif.randomcheckin.utils.TimeUtils
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
