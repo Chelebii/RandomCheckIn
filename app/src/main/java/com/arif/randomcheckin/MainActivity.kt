@@ -14,30 +14,31 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.DarkMode
-import androidx.compose.material.icons.filled.LightMode
-import androidx.compose.material.icons.filled.MoreVert
-import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.LightMode
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
-import androidx.compose.runtime.collectAsState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.compositeOver
-import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Dialog
+import androidx.lifecycle.viewmodel.compose.viewModel
 import com.arif.randomcheckin.data.GoalStore
-import com.arif.randomcheckin.data.MAX_ACTIVE_GOALS
-import com.arif.randomcheckin.data.model.ThemeMode
 import com.arif.randomcheckin.data.model.Goal
-import com.arif.randomcheckin.ui.theme.RandomCheckInTheme
+import com.arif.randomcheckin.data.model.ThemeMode
+import com.arif.randomcheckin.ui.goals.GoalWithProgress
+import com.arif.randomcheckin.ui.goals.GoalsTab
+import com.arif.randomcheckin.ui.goals.GoalsViewModel
+import com.arif.randomcheckin.ui.goals.GoalsViewModelFactory
 import com.arif.randomcheckin.ui.theme.AddGoalScreen
+import com.arif.randomcheckin.ui.theme.RandomCheckInTheme
 import com.google.accompanist.systemuicontroller.rememberSystemUiController
 import kotlinx.coroutines.launch
-import androidx.compose.ui.window.Dialog
 
 // MainActivity: Uygulama açılınca çalışan ana Android Activity (ekranın giriş kapısı)
 class MainActivity : ComponentActivity() {
@@ -93,19 +94,15 @@ fun RandomCheckInApp() {
 fun GoalListScreen(
     goalStore: GoalStore,
     currentTheme: ThemeMode,
-    onThemeChange: (ThemeMode) -> Unit
+    onThemeChange: (ThemeMode) -> Unit,
+    viewModel: GoalsViewModel = viewModel(factory = GoalsViewModelFactory(goalStore))
 ) {
     val colorScheme = MaterialTheme.colorScheme
-    val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var showAddScreen by remember { mutableStateOf(false) }
     var editingGoal by remember { mutableStateOf<Goal?>(null) }
-    var showLimitInfo by remember { mutableStateOf(false) }
-    var pendingDeleteGoal by remember { mutableStateOf<Goal?>(null) }
-    BackHandler(enabled = showLimitInfo) { showLimitInfo = false }
-
-    val goalList by goalStore.goalListFlow().collectAsState(initial = emptyList())
-    val isLimitReached = goalList.size >= MAX_ACTIVE_GOALS
+    val state by viewModel.state.collectAsState()
+    BackHandler(enabled = state.showLimitInfo) { viewModel.hideLimitInfo() }
 
     val dismissAddScreen: () -> Unit = {
         showAddScreen = false
@@ -122,14 +119,14 @@ fun GoalListScreen(
                 scope.launch {
                     try {
                         if (editingGoal == null) {
-                            goalStore.addGoal(title, desc, endDate)
+                            viewModel.addGoal(title, desc, endDate)
                         } else {
-                            goalStore.updateGoal(editingGoal!!.id, title, desc, endDate)
+                            viewModel.updateGoal(editingGoal!!.id, title, desc, endDate)
                         }
                         showAddScreen = false
                         editingGoal = null
                     } catch (limit: IllegalStateException) {
-                        showLimitInfo = true
+                        viewModel.showLimitInfo()
                     }
                 }
             },
@@ -138,7 +135,6 @@ fun GoalListScreen(
         return
     }
 
-    // Ana ekran UI düzeni (dikey kolon)
     Surface(color = colorScheme.background, modifier = Modifier.fillMaxSize()) {
         Box(modifier = Modifier.fillMaxSize()) {
             Column(
@@ -183,22 +179,44 @@ fun GoalListScreen(
 
                 Spacer(modifier = Modifier.height(24.dp))
 
-                // Hedef yoksa mesaj göster, varsa kart içinde göster
-                if (goalList.isEmpty()) {
+                TabRow(selectedTabIndex = state.currentTab.ordinal) {
+                    GoalsTab.values().forEachIndexed { index, tab ->
+                        Tab(
+                            selected = state.currentTab == tab,
+                            onClick = { viewModel.setTab(tab) },
+                            text = { Text(tab.name.lowercase().replaceFirstChar { it.titlecase() }) }
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                val visibleGoals: List<GoalWithProgress> = when (state.currentTab) {
+                    GoalsTab.ACTIVE -> state.activeGoals
+                    GoalsTab.COMPLETED -> state.completedGoals.map { GoalWithProgress(it, 0f) }
+                }
+
+                val isActiveTab = state.currentTab == GoalsTab.ACTIVE
+
+                if (visibleGoals.isEmpty()) {
                     Text(
-                        "No goals yet.",
+                        if (isActiveTab) "No active goals." else "No completed goals yet.",
                         color = colorScheme.onBackground.copy(alpha = 0.75f)
                     )
                 } else {
-                    goalList.forEach { goal ->
+                    visibleGoals.forEach { goalWithProgress ->
                         GoalCard(
-                            goal = goal,
+                            goal = goalWithProgress.goal,
                             colorScheme = colorScheme,
+                            showComplete = isActiveTab,
+                            showEdit = isActiveTab,
+                            progress = if (isActiveTab) goalWithProgress.remainingProgress else null,
+                            onComplete = { viewModel.markCompleted(goalWithProgress.goal) },
                             onEdit = {
-                                editingGoal = goal
+                                editingGoal = goalWithProgress.goal
                                 showAddScreen = true
                             },
-                            onDelete = { pendingDeleteGoal = goal }
+                            onDelete = { viewModel.requestDelete(goalWithProgress.goal) }
                         )
                         Spacer(modifier = Modifier.height(12.dp))
                     }
@@ -206,39 +224,36 @@ fun GoalListScreen(
 
                 Spacer(modifier = Modifier.height(28.dp))
 
-                FilledTonalButton(
-                    onClick = {
-                        if (isLimitReached) {
-                            showLimitInfo = true
-                        } else {
-                            showAddScreen = true
-                        }
-                    },
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = ButtonDefaults.filledTonalButtonColors(
-                        containerColor = if (isLimitReached) colorScheme.surfaceVariant.copy(alpha = 0.5f) else colorScheme.primaryContainer,
-                        contentColor = if (isLimitReached) colorScheme.onSurfaceVariant else colorScheme.onPrimaryContainer
-                    )
-                ) {
-                    Text(if (isLimitReached) "Goal limit reached" else "Add goal")
+                if (isActiveTab) {
+                    FilledTonalButton(
+                        onClick = {
+                            if (state.canAddMoreActive) {
+                                showAddScreen = true
+                            } else {
+                                viewModel.showLimitInfo()
+                            }
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = ButtonDefaults.filledTonalButtonColors(
+                            containerColor = if (!state.canAddMoreActive) colorScheme.surfaceVariant.copy(alpha = 0.5f) else colorScheme.primaryContainer,
+                            contentColor = if (!state.canAddMoreActive) colorScheme.onSurfaceVariant else colorScheme.onPrimaryContainer
+                        )
+                    ) {
+                        Text(if (!state.canAddMoreActive) "Goal limit reached" else "Add goal")
+                    }
                 }
             }
 
-            if (pendingDeleteGoal != null) {
+            if (state.pendingDelete != null) {
                 DeleteConfirmationDialog(
                     colorScheme = colorScheme,
-                    onDismiss = { pendingDeleteGoal = null },
-                    onConfirm = {
-                        scope.launch {
-                            pendingDeleteGoal?.let { goalStore.removeGoal(it.id) }
-                            pendingDeleteGoal = null
-                        }
-                    }
+                    onDismiss = { viewModel.cancelDelete() },
+                    onConfirm = { viewModel.confirmDelete() }
                 )
             }
 
             AnimatedVisibility(
-                visible = showLimitInfo,
+                visible = state.showLimitInfo,
                 enter = fadeIn(animationSpec = tween(durationMillis = 180)),
                 exit = fadeOut(animationSpec = tween(durationMillis = 180))
             ) {
@@ -251,7 +266,7 @@ fun GoalListScreen(
                         .clickable(
                             interactionSource = interactionSource,
                             indication = null
-                        ) { showLimitInfo = false }
+                        ) { viewModel.hideLimitInfo() }
                 )
                 Box(
                     contentAlignment = Alignment.Center,
@@ -289,6 +304,10 @@ fun GoalListScreen(
 private fun GoalCard(
     goal: Goal,
     colorScheme: ColorScheme,
+    showComplete: Boolean,
+    showEdit: Boolean,
+    progress: Float?,
+    onComplete: () -> Unit,
     onEdit: () -> Unit,
     onDelete: () -> Unit
 ) {
@@ -307,8 +326,10 @@ private fun GoalCard(
                     Text(goal.title, style = MaterialTheme.typography.titleLarge, color = colorScheme.onSurface)
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    IconButton(onClick = onEdit) {
-                        Icon(Icons.Filled.Edit, contentDescription = "Edit goal", tint = colorScheme.onSurfaceVariant)
+                    if (showEdit) {
+                        IconButton(onClick = onEdit) {
+                            Icon(Icons.Filled.Edit, contentDescription = "Edit goal", tint = colorScheme.onSurfaceVariant)
+                        }
                     }
                     IconButton(onClick = onDelete) {
                         Icon(Icons.Filled.Delete, contentDescription = "Delete goal", tint = colorScheme.onSurfaceVariant)
@@ -319,6 +340,29 @@ private fun GoalCard(
             Text(goal.description, color = colorScheme.onSurfaceVariant)
             Spacer(modifier = Modifier.height(10.dp))
             Text("Ends ${goal.endDate}", color = colorScheme.onSurfaceVariant)
+            if (progress != null) {
+                Spacer(modifier = Modifier.height(12.dp))
+                LinearProgressIndicator(
+                    progress = progress,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(4.dp),
+                    trackColor = colorScheme.surfaceVariant,
+                    color = colorScheme.primary
+                )
+            }
+            if (showComplete) {
+                IconButton(
+                    onClick = onComplete,
+                    modifier = Modifier.align(Alignment.End)
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.CheckCircle,
+                        contentDescription = "Mark as completed",
+                        tint = colorScheme.primary
+                    )
+                }
+            }
         }
     }
 }

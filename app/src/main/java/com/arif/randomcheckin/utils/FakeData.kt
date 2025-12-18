@@ -10,6 +10,7 @@ object FakeData {
                 id = "1",
                 title = "Günlük spor",
                 description = "Her gün en az 20 dakika hareket",
+                startDate = "18.12.2025",
                 endDate = "31.12.2025"
             )
         )
