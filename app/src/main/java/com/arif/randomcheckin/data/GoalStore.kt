@@ -19,7 +19,7 @@ import kotlinx.coroutines.flow.map
 import org.json.JSONArray
 import org.json.JSONObject
 
-const val MAX_ACTIVE_GOALS = 3
+const val MAX_ACTIVE_GOALS = 3 // Keeping active goals small enforces focus and nightly completion.
 
 private val Context.dataStore by preferencesDataStore(name = "goal_store")
 
@@ -36,6 +36,10 @@ class GoalStore(private val context: Context) {
         prefs[GOALS_KEY]?.toGoalList().orEmpty()
     }
 
+    /**
+     * Persists a new goal while enforcing business constraints: start date is today, end dates cannot be in the past,
+     * and only [MAX_ACTIVE_GOALS] active goals may exist at any time.
+     */
     suspend fun addGoal(title: String, description: String, endDate: String) {
         context.dataStore.edit { prefs ->
             val stored = prefs[GOALS_KEY]?.toGoalList().orEmpty()
@@ -67,6 +71,9 @@ class GoalStore(private val context: Context) {
         }
     }
 
+    /**
+     * Updates an existing goal and re-validates the active goal cap so edits cannot sneak past the focus rule.
+     */
     suspend fun updateGoal(goalId: String, title: String, description: String, endDate: String) {
         context.dataStore.edit { prefs ->
             val stored = prefs[GOALS_KEY]?.toGoalList().orEmpty()
@@ -88,6 +95,10 @@ class GoalStore(private val context: Context) {
         }
     }
 
+    /**
+     * Marks a goal as completed by shifting its end date to yesterday, which causes it to be filtered into the
+     * completed tab without requiring UI-side logic.
+     */
     suspend fun completeGoal(goalId: String) {
         context.dataStore.edit { prefs ->
             val stored = prefs[GOALS_KEY]?.toGoalList().orEmpty()

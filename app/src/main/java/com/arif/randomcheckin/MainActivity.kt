@@ -21,6 +21,7 @@ import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.LightMode
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -33,6 +34,7 @@ import com.arif.randomcheckin.data.model.Goal
 import com.arif.randomcheckin.data.model.ThemeMode
 import com.arif.randomcheckin.ui.goals.GoalWithProgress
 import com.arif.randomcheckin.ui.goals.GoalsTab
+import com.arif.randomcheckin.ui.goals.GoalsUiState
 import com.arif.randomcheckin.ui.goals.GoalsViewModel
 import com.arif.randomcheckin.ui.goals.GoalsViewModelFactory
 import com.arif.randomcheckin.ui.theme.AddGoalScreen
@@ -40,7 +42,9 @@ import com.arif.randomcheckin.ui.theme.RandomCheckInTheme
 import com.google.accompanist.systemuicontroller.rememberSystemUiController
 import kotlinx.coroutines.launch
 
-// MainActivity: Uygulama açılınca çalışan ana Android Activity (ekranın giriş kapısı)
+/**
+ * Hosts the RandomCheckIn experience. Keeps the activity lean by delegating all logic to Compose and the ViewModel.
+ */
 class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -90,6 +94,9 @@ fun RandomCheckInApp() {
     }
 }
 
+/**
+ * High-level goals UI. UI remains stateless by observing [GoalsViewModel] and emitting user intents back.
+ */
 @Composable
 fun GoalListScreen(
     goalStore: GoalStore,
@@ -97,43 +104,109 @@ fun GoalListScreen(
     onThemeChange: (ThemeMode) -> Unit,
     viewModel: GoalsViewModel = viewModel(factory = GoalsViewModelFactory(goalStore))
 ) {
-    val colorScheme = MaterialTheme.colorScheme
-    val scope = rememberCoroutineScope()
-    var showAddScreen by remember { mutableStateOf(false) }
-    var editingGoal by remember { mutableStateOf<Goal?>(null) }
     val state by viewModel.state.collectAsState()
-    BackHandler(enabled = state.showLimitInfo) { viewModel.hideLimitInfo() }
+    var showAddScreen by rememberSaveable { mutableStateOf(false) }
+    var editingGoalId by rememberSaveable { mutableStateOf<String?>(null) }
+    val scope = rememberCoroutineScope()
 
-    val dismissAddScreen: () -> Unit = {
-        showAddScreen = false
-        editingGoal = null
+    val editingGoal = remember(state.activeGoals, state.completedGoals, editingGoalId) {
+        editingGoalId?.let { id ->
+            state.activeGoals.firstOrNull { it.goal.id == id }?.goal
+                ?: state.completedGoals.firstOrNull { it.id == id }
+        }
     }
+
+    // Use derivedStateOf so recomposition only happens when tab data actually changes.
+    val visibleGoals by remember(state.currentTab, state.activeGoals, state.completedGoals) {
+        derivedStateOf {
+            when (state.currentTab) {
+                GoalsTab.ACTIVE -> state.activeGoals
+                GoalsTab.COMPLETED -> state.completedGoals.map { GoalWithProgress(it, 0f) }
+            }
+        }
+    }
+
+    val isActiveTab = state.currentTab == GoalsTab.ACTIVE
+
+    BackHandler(enabled = state.showLimitInfo) { viewModel.hideLimitInfo() }
 
     if (showAddScreen) {
         AddGoalScreen(
             initialTitle = editingGoal?.title.orEmpty(),
             initialDescription = editingGoal?.description.orEmpty(),
             initialEndDate = editingGoal?.endDate.orEmpty(),
-            titleText = if (editingGoal == null) "Add Goal" else "Edit Goal",
+            titleText = if (editingGoal == null) ADD_GOAL_LABEL else EDIT_GOAL_LABEL,
             onSave = { title, desc, endDate ->
                 scope.launch {
-                    try {
+                    runCatching {
                         if (editingGoal == null) {
                             viewModel.addGoal(title, desc, endDate)
                         } else {
-                            viewModel.updateGoal(editingGoal!!.id, title, desc, endDate)
+                            viewModel.updateGoal(editingGoal.id, title, desc, endDate)
                         }
+                    }.onSuccess {
                         showAddScreen = false
-                        editingGoal = null
-                    } catch (limit: IllegalStateException) {
+                        editingGoalId = null
+                    }.onFailure {
                         viewModel.showLimitInfo()
                     }
                 }
             },
-            onCancel = dismissAddScreen
+            onCancel = {
+                showAddScreen = false
+                editingGoalId = null
+            }
         )
         return
     }
+
+    GoalListContent(
+        state = state,
+        currentTheme = currentTheme,
+        onThemeChange = onThemeChange,
+        visibleGoals = visibleGoals,
+        isActiveTab = isActiveTab,
+        onAddGoal = {
+            if (state.canAddMoreActive) {
+                editingGoalId = null
+                showAddScreen = true
+            } else {
+                viewModel.showLimitInfo()
+            }
+        },
+        onEditGoal = { goalId ->
+            editingGoalId = goalId
+            showAddScreen = true
+        },
+        onCompleteGoal = viewModel::markCompleted,
+        onDeleteGoal = viewModel::requestDelete,
+        onDismissDelete = viewModel::cancelDelete,
+        onConfirmDelete = viewModel::confirmDelete,
+        onHideLimitInfo = viewModel::hideLimitInfo,
+        onTabSelected = viewModel::setTab
+    )
+}
+
+/**
+ * Stateless container that wires UI controls to events while showing either the Active or Completed tab.
+ */
+@Composable
+private fun GoalListContent(
+    state: GoalsUiState,
+    currentTheme: ThemeMode,
+    onThemeChange: (ThemeMode) -> Unit,
+    visibleGoals: List<GoalWithProgress>,
+    isActiveTab: Boolean,
+    onAddGoal: () -> Unit,
+    onEditGoal: (String) -> Unit,
+    onCompleteGoal: (Goal) -> Unit,
+    onDeleteGoal: (Goal) -> Unit,
+    onDismissDelete: () -> Unit,
+    onConfirmDelete: () -> Unit,
+    onHideLimitInfo: () -> Unit,
+    onTabSelected: (GoalsTab) -> Unit
+) {
+    val colorScheme = MaterialTheme.colorScheme
 
     Surface(color = colorScheme.background, modifier = Modifier.fillMaxSize()) {
         Box(modifier = Modifier.fillMaxSize()) {
@@ -142,113 +215,33 @@ fun GoalListScreen(
                     .fillMaxSize()
                     .padding(horizontal = 16.dp, vertical = 20.dp)
             ) {
-
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Column {
-                        Text(
-                            text = "Goals",
-                            style = MaterialTheme.typography.headlineMedium,
-                            color = colorScheme.onBackground
-                        )
-                        Text(
-                            text = "Stay consistent every night",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = colorScheme.onBackground.copy(alpha = 0.7f)
-                        )
-                    }
-                    FilledIconButton(
-                        onClick = {
-                            val nextMode = if (currentTheme == ThemeMode.DARK) ThemeMode.LIGHT else ThemeMode.DARK
-                            onThemeChange(nextMode)
-                        },
-                        colors = IconButtonDefaults.filledIconButtonColors(
-                            containerColor = colorScheme.surfaceVariant,
-                            contentColor = colorScheme.onSurface
-                        )
-                    ) {
-                        Icon(
-                            imageVector = if (currentTheme == ThemeMode.DARK) Icons.Filled.LightMode else Icons.Filled.DarkMode,
-                            contentDescription = "Toggle theme"
-                        )
-                    }
-                }
-
+                Header(currentTheme = currentTheme) { onThemeChange(it) }
                 Spacer(modifier = Modifier.height(24.dp))
-
-                TabRow(selectedTabIndex = state.currentTab.ordinal) {
-                    GoalsTab.values().forEachIndexed { index, tab ->
-                        Tab(
-                            selected = state.currentTab == tab,
-                            onClick = { viewModel.setTab(tab) },
-                            text = { Text(tab.name.lowercase().replaceFirstChar { it.titlecase() }) }
-                        )
-                    }
-                }
-
+                GoalsTabRow(currentTab = state.currentTab, onTabSelected = onTabSelected)
                 Spacer(modifier = Modifier.height(16.dp))
-
-                val visibleGoals: List<GoalWithProgress> = when (state.currentTab) {
-                    GoalsTab.ACTIVE -> state.activeGoals
-                    GoalsTab.COMPLETED -> state.completedGoals.map { GoalWithProgress(it, 0f) }
-                }
-
-                val isActiveTab = state.currentTab == GoalsTab.ACTIVE
-
-                if (visibleGoals.isEmpty()) {
-                    Text(
-                        if (isActiveTab) "No active goals." else "No completed goals yet.",
-                        color = colorScheme.onBackground.copy(alpha = 0.75f)
-                    )
-                } else {
-                    visibleGoals.forEach { goalWithProgress ->
-                        GoalCard(
-                            goal = goalWithProgress.goal,
-                            colorScheme = colorScheme,
-                            showComplete = isActiveTab,
-                            showEdit = isActiveTab,
-                            progress = if (isActiveTab) goalWithProgress.remainingProgress else null,
-                            onComplete = { viewModel.markCompleted(goalWithProgress.goal) },
-                            onEdit = {
-                                editingGoal = goalWithProgress.goal
-                                showAddScreen = true
-                            },
-                            onDelete = { viewModel.requestDelete(goalWithProgress.goal) }
-                        )
-                        Spacer(modifier = Modifier.height(12.dp))
-                    }
-                }
-
+                GoalsList(
+                    goals = visibleGoals,
+                    isActiveTab = isActiveTab,
+                    colorScheme = colorScheme,
+                    onCompleteGoal = onCompleteGoal,
+                    onEditGoal = onEditGoal,
+                    onDeleteGoal = onDeleteGoal
+                )
                 Spacer(modifier = Modifier.height(28.dp))
-
                 if (isActiveTab) {
-                    FilledTonalButton(
-                        onClick = {
-                            if (state.canAddMoreActive) {
-                                showAddScreen = true
-                            } else {
-                                viewModel.showLimitInfo()
-                            }
-                        },
-                        modifier = Modifier.fillMaxWidth(),
-                        colors = ButtonDefaults.filledTonalButtonColors(
-                            containerColor = if (!state.canAddMoreActive) colorScheme.surfaceVariant.copy(alpha = 0.5f) else colorScheme.primaryContainer,
-                            contentColor = if (!state.canAddMoreActive) colorScheme.onSurfaceVariant else colorScheme.onPrimaryContainer
-                        )
-                    ) {
-                        Text(if (!state.canAddMoreActive) "Goal limit reached" else "Add goal")
-                    }
+                    AddGoalButton(
+                        enabled = state.canAddMoreActive,
+                        onClick = onAddGoal,
+                        colorScheme = colorScheme
+                    )
                 }
             }
 
             if (state.pendingDelete != null) {
                 DeleteConfirmationDialog(
                     colorScheme = colorScheme,
-                    onDismiss = { viewModel.cancelDelete() },
-                    onConfirm = { viewModel.confirmDelete() }
+                    onDismiss = onDismissDelete,
+                    onConfirm = onConfirmDelete
                 )
             }
 
@@ -257,49 +250,176 @@ fun GoalListScreen(
                 enter = fadeIn(animationSpec = tween(durationMillis = 180)),
                 exit = fadeOut(animationSpec = tween(durationMillis = 180))
             ) {
-                val overlayColor = Color.Black.copy(alpha = 0.55f)
-                val interactionSource = remember { MutableInteractionSource() }
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .background(overlayColor)
-                        .clickable(
-                            interactionSource = interactionSource,
-                            indication = null
-                        ) { viewModel.hideLimitInfo() }
-                )
-                Box(
-                    contentAlignment = Alignment.Center,
-                    modifier = Modifier.fillMaxSize()
-                ) {
-                    Card(
-                        shape = RoundedCornerShape(20.dp),
-                        colors = CardDefaults.cardColors(containerColor = colorScheme.surfaceVariant)
-                    ) {
-                        Column(
-                            modifier = Modifier
-                                .widthIn(max = 360.dp)
-                                .padding(24.dp)
-                        ) {
-                            Text(
-                                text = "Why only 3 goals?",
-                                style = MaterialTheme.typography.titleLarge,
-                                color = colorScheme.onSurface
-                            )
-                            Spacer(modifier = Modifier.height(12.dp))
-                            Text(
-                                text = "Limiting goals helps you stay focused and finish what you start. Three is enough.",
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = colorScheme.onSurfaceVariant
-                            )
-                        }
-                    }
+                LimitInfoOverlay(colorScheme = colorScheme, onDismiss = onHideLimitInfo)
+            }
+        }
+    }
+}
+
+@Composable
+private fun Header(currentTheme: ThemeMode, onThemeChange: (ThemeMode) -> Unit) {
+    val colorScheme = MaterialTheme.colorScheme
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Column {
+            Text(text = GOALS_TITLE, style = MaterialTheme.typography.headlineMedium, color = colorScheme.onBackground)
+            Text(text = GOALS_SUBTITLE, style = MaterialTheme.typography.bodyMedium, color = colorScheme.onBackground.copy(alpha = 0.7f))
+        }
+        FilledIconButton(
+            onClick = {
+                val nextMode = if (currentTheme == ThemeMode.DARK) ThemeMode.LIGHT else ThemeMode.DARK
+                onThemeChange(nextMode)
+            },
+            colors = IconButtonDefaults.filledIconButtonColors(
+                containerColor = colorScheme.surfaceVariant,
+                contentColor = colorScheme.onSurface
+            )
+        ) {
+            Icon(
+                imageVector = if (currentTheme == ThemeMode.DARK) Icons.Filled.LightMode else Icons.Filled.DarkMode,
+                contentDescription = THEME_TOGGLE_DESCRIPTION
+            )
+        }
+    }
+}
+
+/** Renders the Active/Completed tab switcher so each tab stays declarative. */
+@Composable
+private fun GoalsTabRow(currentTab: GoalsTab, onTabSelected: (GoalsTab) -> Unit) {
+    TabRow(selectedTabIndex = currentTab.ordinal) {
+        GoalsTab.values().forEach { tab ->
+            Tab(
+                selected = currentTab == tab,
+                onClick = { onTabSelected(tab) },
+                text = { Text(tab.title) }
+            )
+        }
+    }
+}
+
+private val GoalsTab.title: String
+    get() = name.lowercase().replaceFirstChar { it.titlecase() }
+
+/** Displays either the progress cards or contextual empty state copy. */
+@Composable
+private fun GoalsList(
+    goals: List<GoalWithProgress>,
+    isActiveTab: Boolean,
+    colorScheme: ColorScheme,
+    onCompleteGoal: (Goal) -> Unit,
+    onEditGoal: (String) -> Unit,
+    onDeleteGoal: (Goal) -> Unit
+) {
+    if (goals.isEmpty()) {
+        Text(
+            text = if (isActiveTab) NO_ACTIVE_TEXT else NO_COMPLETED_TEXT,
+            color = colorScheme.onBackground.copy(alpha = 0.75f)
+        )
+    } else {
+        goals.forEach { goalWithProgress ->
+            GoalCard(
+                goal = goalWithProgress.goal,
+                colorScheme = colorScheme,
+                showComplete = isActiveTab,
+                showEdit = isActiveTab,
+                progress = if (isActiveTab) goalWithProgress.remainingProgress else null,
+                onComplete = { onCompleteGoal(goalWithProgress.goal) },
+                onEdit = { onEditGoal(goalWithProgress.goal.id) },
+                onDelete = { onDeleteGoal(goalWithProgress.goal) }
+            )
+            Spacer(modifier = Modifier.height(12.dp))
+        }
+    }
+}
+
+/** CTA lives in its own composable to keep GoalListContent compact and reusable. */
+@Composable
+private fun AddGoalButton(enabled: Boolean, onClick: () -> Unit, colorScheme: ColorScheme) {
+    FilledTonalButton(
+        onClick = onClick,
+        modifier = Modifier.fillMaxWidth(),
+        enabled = enabled,
+        colors = ButtonDefaults.filledTonalButtonColors(
+            containerColor = if (!enabled) colorScheme.surfaceVariant.copy(alpha = 0.5f) else colorScheme.primaryContainer,
+            contentColor = if (!enabled) colorScheme.onSurfaceVariant else colorScheme.onPrimaryContainer
+        )
+    ) {
+        Text(text = if (!enabled) LIMIT_REACHED_LABEL else ADD_GOAL_LABEL)
+    }
+}
+
+/** Full-screen overlay explaining the "why only 3" rule without blocking accessibility focus. */
+@Composable
+private fun LimitInfoOverlay(colorScheme: ColorScheme, onDismiss: () -> Unit) {
+    val overlayColor = Color.Black.copy(alpha = 0.55f)
+    val interactionSource = remember { MutableInteractionSource() }
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(overlayColor)
+            .clickable(
+                interactionSource = interactionSource,
+                indication = null
+            ) { onDismiss() }
+    )
+    Box(
+        contentAlignment = Alignment.Center,
+        modifier = Modifier.fillMaxSize()
+    ) {
+        Card(
+            shape = RoundedCornerShape(20.dp),
+            colors = CardDefaults.cardColors(containerColor = colorScheme.surfaceVariant)
+        ) {
+            Column(
+                modifier = Modifier
+                    .widthIn(max = 360.dp)
+                    .padding(24.dp)
+            ) {
+                Text(text = WHY_LIMIT_TITLE, style = MaterialTheme.typography.titleLarge, color = colorScheme.onSurface)
+                Spacer(modifier = Modifier.height(12.dp))
+                Text(text = WHY_LIMIT_BODY, style = MaterialTheme.typography.bodyMedium, color = colorScheme.onSurfaceVariant)
+            }
+        }
+    }
+}
+
+/** Modal dialog used whenever the user deletes a goal, regardless of tab. */
+@Composable
+private fun DeleteConfirmationDialog(
+    colorScheme: ColorScheme,
+    onDismiss: () -> Unit,
+    onConfirm: () -> Unit
+) {
+    Dialog(onDismissRequest = onDismiss) {
+        Card(
+            shape = RoundedCornerShape(20.dp),
+            colors = CardDefaults.cardColors(containerColor = colorScheme.surface)
+        ) {
+            Column(modifier = Modifier.padding(24.dp)) {
+                Text(DELETE_TITLE, style = MaterialTheme.typography.titleLarge, color = colorScheme.onSurface)
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(DELETE_BODY, color = colorScheme.onSurfaceVariant)
+                Spacer(modifier = Modifier.height(20.dp))
+                Row(horizontalArrangement = Arrangement.End, modifier = Modifier.fillMaxWidth()) {
+                    TextButton(onClick = onDismiss) { Text(DELETE_CANCEL) }
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Button(
+                        onClick = onConfirm,
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = colorScheme.errorContainer,
+                            contentColor = colorScheme.onErrorContainer
+                        )
+                    ) { Text(DELETE_CONFIRM) }
                 }
             }
         }
     }
 }
 
+/** Card UI for a single goal. Receives all state via params so previews stay easy. */
 @Composable
 private fun GoalCard(
     goal: Goal,
@@ -367,27 +487,17 @@ private fun GoalCard(
     }
 }
 
-@Composable
-private fun DeleteConfirmationDialog(
-    colorScheme: ColorScheme,
-    onDismiss: () -> Unit,
-    onConfirm: () -> Unit
-) {
-    Dialog(onDismissRequest = onDismiss) {
-        Card(shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = colorScheme.surface)) {
-            Column(modifier = Modifier.padding(24.dp)) {
-                Text("Delete this goal?", style = MaterialTheme.typography.titleLarge, color = colorScheme.onSurface)
-                Spacer(modifier = Modifier.height(8.dp))
-                Text("This action can’t be undone.", color = colorScheme.onSurfaceVariant)
-                Spacer(modifier = Modifier.height(20.dp))
-                Row(horizontalArrangement = Arrangement.End, modifier = Modifier.fillMaxWidth()) {
-                    TextButton(onClick = onDismiss) { Text("Cancel") }
-                    Spacer(modifier = Modifier.width(12.dp))
-                    Button(onClick = onConfirm, colors = ButtonDefaults.buttonColors(containerColor = colorScheme.errorContainer, contentColor = colorScheme.onErrorContainer)) {
-                        Text("Delete")
-                    }
-                }
-            }
-        }
-    }
-}
+private const val GOALS_TITLE = "Goals"
+private const val GOALS_SUBTITLE = "Stay consistent every night"
+private const val NO_ACTIVE_TEXT = "No active goals."
+private const val NO_COMPLETED_TEXT = "No completed goals yet."
+private const val WHY_LIMIT_TITLE = "Why only 3 goals?"
+private const val WHY_LIMIT_BODY = "Limiting goals helps you stay focused and finish what you start. Three is enough."
+private const val DELETE_TITLE = "Delete this goal?"
+private const val DELETE_BODY = "This action can’t be undone."
+private const val DELETE_CANCEL = "Cancel"
+private const val DELETE_CONFIRM = "Delete"
+private const val ADD_GOAL_LABEL = "Add goal"
+private const val EDIT_GOAL_LABEL = "Edit Goal"
+private const val LIMIT_REACHED_LABEL = "Goal limit reached"
+private const val THEME_TOGGLE_DESCRIPTION = "Toggle theme"

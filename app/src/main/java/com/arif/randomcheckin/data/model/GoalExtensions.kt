@@ -3,6 +3,7 @@ package com.arif.randomcheckin.data.model
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 
+/** Shared formatter for dd.MM.yyyy goal dates. */
 val goalDateFormatter: DateTimeFormatter = DateTimeFormatter.ofPattern("dd.MM.yyyy")
 
 fun Goal.startDateOrNull(): LocalDate? = runCatching {
@@ -13,11 +14,16 @@ fun Goal.endDateOrNull(): LocalDate? = runCatching {
     LocalDate.parse(endDate.trim(), goalDateFormatter)
 }.getOrNull()
 
+/** Goals are active until the day before their end date; expired goals should move to Completed automatically. */
 fun Goal.isActive(referenceDate: LocalDate = LocalDate.now()): Boolean {
     val goalDate = endDateOrNull()
     return goalDate?.isBefore(referenceDate) != true
 }
 
+/**
+ * Calculates remaining progress as the share of days left. The result is clamped 0..1 so the UI bar never overflows,
+ * and zero-length goals safely report 0.
+ */
 fun Goal.remainingProgress(today: LocalDate = LocalDate.now()): Float {
     val start = startDateOrNull() ?: today
     val end = endDateOrNull() ?: start
