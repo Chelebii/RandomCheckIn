@@ -12,6 +12,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CheckCircle
@@ -102,6 +104,15 @@ fun GoalListScreen(
     var showAddScreen by remember { mutableStateOf(false) }
     var editingGoal by remember { mutableStateOf<Goal?>(null) }
     val state by viewModel.state.collectAsState()
+    val isActiveTab = state.currentTab == GoalsTab.ACTIVE
+    val visibleGoals by remember(state.currentTab, state.activeGoals, state.completedGoals) {
+        derivedStateOf {
+            when (state.currentTab) {
+                GoalsTab.ACTIVE -> state.activeGoals
+                GoalsTab.COMPLETED -> state.completedGoals.map { GoalWithProgress(it, 0f) }
+            }
+        }
+    }
     BackHandler(enabled = state.showLimitInfo) { viewModel.hideLimitInfo() }
 
     val dismissAddScreen: () -> Unit = {
@@ -191,37 +202,19 @@ fun GoalListScreen(
 
                 Spacer(modifier = Modifier.height(16.dp))
 
-                val visibleGoals: List<GoalWithProgress> = when (state.currentTab) {
-                    GoalsTab.ACTIVE -> state.activeGoals
-                    GoalsTab.COMPLETED -> state.completedGoals.map { GoalWithProgress(it, 0f) }
-                }
-
-                val isActiveTab = state.currentTab == GoalsTab.ACTIVE
-
-                if (visibleGoals.isEmpty()) {
-                    Text(
-                        if (isActiveTab) "No active goals." else "No completed goals yet.",
-                        color = colorScheme.onBackground.copy(alpha = 0.75f)
-                    )
-                } else {
-                    visibleGoals.forEach { goalWithProgress ->
-                        GoalCard(
-                            goal = goalWithProgress.goal,
-                            colorScheme = colorScheme,
-                            showComplete = isActiveTab,
-                            showEdit = isActiveTab,
-                            progress = if (isActiveTab) goalWithProgress.remainingProgress else null,
-                            onComplete = { viewModel.markCompleted(goalWithProgress.goal) },
-                            onEdit = {
-                                editingGoal = goalWithProgress.goal
-                                showAddScreen = true
-                            },
-                            onDelete = { viewModel.requestDelete(goalWithProgress.goal) }
-                        )
-                        Spacer(modifier = Modifier.height(12.dp))
-                    }
-                }
-
+                GoalsList(
+                    modifier = Modifier.weight(1f),
+                    goals = visibleGoals,
+                    isActiveTab = isActiveTab,
+                    colorScheme = colorScheme,
+                    onCompleteGoal = viewModel::markCompleted,
+                    onEditGoal = { goalId ->
+                        editingGoal = state.activeGoals.firstOrNull { it.goal.id == goalId }?.goal
+                            ?: state.completedGoals.firstOrNull { it.id == goalId }
+                        showAddScreen = true
+                    },
+                    onDeleteGoal = viewModel::requestDelete
+                )
                 Spacer(modifier = Modifier.height(28.dp))
 
                 if (isActiveTab) {
@@ -391,3 +384,47 @@ private fun DeleteConfirmationDialog(
         }
     }
 }
+
+@Composable
+private fun GoalsList(
+    modifier: Modifier = Modifier,
+    goals: List<GoalWithProgress>,
+    isActiveTab: Boolean,
+    colorScheme: ColorScheme,
+    onCompleteGoal: (Goal) -> Unit,
+    onEditGoal: (String) -> Unit,
+    onDeleteGoal: (Goal) -> Unit
+) {
+    if (goals.isEmpty()) {
+        Box(
+            modifier = modifier.fillMaxWidth(),
+            contentAlignment = Alignment.Center
+        ) {
+            Text(
+                text = if (isActiveTab) NO_ACTIVE_TEXT else NO_COMPLETED_TEXT,
+                color = colorScheme.onBackground.copy(alpha = 0.75f)
+            )
+        }
+    } else {
+        LazyColumn(
+            modifier = modifier.fillMaxWidth(),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            items(goals, key = { it.goal.id }) { goalWithProgress ->
+                GoalCard(
+                    goal = goalWithProgress.goal,
+                    colorScheme = colorScheme,
+                    showComplete = isActiveTab,
+                    showEdit = isActiveTab,
+                    progress = if (isActiveTab) goalWithProgress.remainingProgress else null,
+                    onComplete = { onCompleteGoal(goalWithProgress.goal) },
+                    onEdit = { onEditGoal(goalWithProgress.goal.id) },
+                    onDelete = { onDeleteGoal(goalWithProgress.goal) }
+                )
+            }
+        }
+    }
+}
+
+private const val NO_ACTIVE_TEXT = "No active goals."
+private const val NO_COMPLETED_TEXT = "No completed goals yet."
