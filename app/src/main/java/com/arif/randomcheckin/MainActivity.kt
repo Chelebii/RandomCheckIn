@@ -35,6 +35,7 @@ import com.arif.randomcheckin.data.model.Goal
 import com.arif.randomcheckin.data.model.ThemeMode
 import com.arif.randomcheckin.ui.goals.GoalWithProgress
 import com.arif.randomcheckin.ui.goals.GoalsTab
+import com.arif.randomcheckin.ui.goals.GoalsUiState
 import com.arif.randomcheckin.ui.goals.GoalsViewModel
 import com.arif.randomcheckin.ui.goals.GoalsViewModelFactory
 import com.arif.randomcheckin.ui.theme.AddGoalScreen
@@ -101,47 +102,36 @@ fun GoalListScreen(
 ) {
     val colorScheme = MaterialTheme.colorScheme
     val scope = rememberCoroutineScope()
-    var showAddScreen by remember { mutableStateOf(false) }
-    var editingGoal by remember { mutableStateOf<Goal?>(null) }
+    var goalEditor by remember { mutableStateOf<GoalEditorState>(GoalEditorState.Hidden) }
     val state by viewModel.state.collectAsState()
     val isActiveTab = state.currentTab == GoalsTab.ACTIVE
-    val visibleGoals by remember(state.currentTab, state.activeGoals, state.completedGoals) {
-        derivedStateOf {
-            when (state.currentTab) {
-                GoalsTab.ACTIVE -> state.activeGoals
-                GoalsTab.COMPLETED -> state.completedGoals.map { GoalWithProgress(it, 0f) }
-            }
-        }
-    }
+    val visibleGoals by remember(state) { derivedStateOf { state.visibleGoals() } }
     BackHandler(enabled = state.showLimitInfo) { viewModel.hideLimitInfo() }
 
-    val dismissAddScreen: () -> Unit = {
-        showAddScreen = false
-        editingGoal = null
-    }
+    val dismissEditor: () -> Unit = { goalEditor = GoalEditorState.Hidden }
 
-    if (showAddScreen) {
+    val editorState = goalEditor
+    if (editorState !is GoalEditorState.Hidden) {
         AddGoalScreen(
-            initialTitle = editingGoal?.title.orEmpty(),
-            initialDescription = editingGoal?.description.orEmpty(),
-            initialEndDate = editingGoal?.endDate.orEmpty(),
-            titleText = if (editingGoal == null) "Add Goal" else "Edit Goal",
+            initialTitle = editorState.initialTitle(),
+            initialDescription = editorState.initialDescription(),
+            initialEndDate = editorState.initialEndDate(),
+            titleText = if (editorState is GoalEditorState.Editing) "Edit Goal" else "Add Goal",
             onSave = { title, desc, endDate ->
                 scope.launch {
                     try {
-                        if (editingGoal == null) {
-                            viewModel.addGoal(title, desc, endDate)
-                        } else {
-                            viewModel.updateGoal(editingGoal!!.id, title, desc, endDate)
+                        when (editorState) {
+                            GoalEditorState.Creating -> viewModel.addGoal(title, desc, endDate)
+                            is GoalEditorState.Editing -> viewModel.updateGoal(editorState.goal.id, title, desc, endDate)
+                            GoalEditorState.Hidden -> Unit
                         }
-                        showAddScreen = false
-                        editingGoal = null
+                        goalEditor = GoalEditorState.Hidden
                     } catch (limit: IllegalStateException) {
                         viewModel.showLimitInfo()
                     }
                 }
             },
-            onCancel = dismissAddScreen
+            onCancel = dismissEditor
         )
         return
     }
@@ -208,11 +198,7 @@ fun GoalListScreen(
                     isActiveTab = isActiveTab,
                     colorScheme = colorScheme,
                     onCompleteGoal = viewModel::markCompleted,
-                    onEditGoal = { goalId ->
-                        editingGoal = state.activeGoals.firstOrNull { it.goal.id == goalId }?.goal
-                            ?: state.completedGoals.firstOrNull { it.id == goalId }
-                        showAddScreen = true
-                    },
+                    onEditGoal = { goal -> goalEditor = GoalEditorState.Editing(goal) },
                     onDeleteGoal = viewModel::requestDelete
                 )
                 Spacer(modifier = Modifier.height(28.dp))
@@ -221,7 +207,7 @@ fun GoalListScreen(
                     FilledTonalButton(
                         onClick = {
                             if (state.canAddMoreActive) {
-                                showAddScreen = true
+                                goalEditor = GoalEditorState.Creating
                             } else {
                                 viewModel.showLimitInfo()
                             }
@@ -250,44 +236,10 @@ fun GoalListScreen(
                 enter = fadeIn(animationSpec = tween(durationMillis = 180)),
                 exit = fadeOut(animationSpec = tween(durationMillis = 180))
             ) {
-                val overlayColor = Color.Black.copy(alpha = 0.55f)
-                val interactionSource = remember { MutableInteractionSource() }
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .background(overlayColor)
-                        .clickable(
-                            interactionSource = interactionSource,
-                            indication = null
-                        ) { viewModel.hideLimitInfo() }
+                GoalLimitOverlay(
+                    colorScheme = colorScheme,
+                    onDismiss = { viewModel.hideLimitInfo() }
                 )
-                Box(
-                    contentAlignment = Alignment.Center,
-                    modifier = Modifier.fillMaxSize()
-                ) {
-                    Card(
-                        shape = RoundedCornerShape(20.dp),
-                        colors = CardDefaults.cardColors(containerColor = colorScheme.surfaceVariant)
-                    ) {
-                        Column(
-                            modifier = Modifier
-                                .widthIn(max = 360.dp)
-                                .padding(24.dp)
-                        ) {
-                            Text(
-                                text = "Why only 3 goals?",
-                                style = MaterialTheme.typography.titleLarge,
-                                color = colorScheme.onSurface
-                            )
-                            Spacer(modifier = Modifier.height(12.dp))
-                            Text(
-                                text = "Limiting goals helps you stay focused and finish what you start. Three is enough.",
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = colorScheme.onSurfaceVariant
-                            )
-                        }
-                    }
-                }
             }
         }
     }
@@ -386,13 +338,59 @@ private fun DeleteConfirmationDialog(
 }
 
 @Composable
+private fun GoalLimitOverlay(
+    colorScheme: ColorScheme,
+    onDismiss: () -> Unit
+) {
+    val overlayColor = Color.Black.copy(alpha = 0.55f)
+    val interactionSource = remember { MutableInteractionSource() }
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(overlayColor)
+            .clickable(
+                interactionSource = interactionSource,
+                indication = null,
+                onClick = onDismiss
+            )
+    )
+    Box(
+        modifier = Modifier.fillMaxSize(),
+        contentAlignment = Alignment.Center
+    ) {
+        Card(
+            shape = RoundedCornerShape(20.dp),
+            colors = CardDefaults.cardColors(containerColor = colorScheme.surfaceVariant)
+        ) {
+            Column(
+                modifier = Modifier
+                    .widthIn(max = 360.dp)
+                    .padding(24.dp)
+            ) {
+                Text(
+                    text = "Why only 3 goals?",
+                    style = MaterialTheme.typography.titleLarge,
+                    color = colorScheme.onSurface
+                )
+                Spacer(modifier = Modifier.height(12.dp))
+                Text(
+                    text = "Limiting goals helps you stay focused and finish what you start. Three is enough.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = colorScheme.onSurfaceVariant
+                )
+            }
+        }
+    }
+}
+
+@Composable
 private fun GoalsList(
     modifier: Modifier = Modifier,
     goals: List<GoalWithProgress>,
     isActiveTab: Boolean,
     colorScheme: ColorScheme,
     onCompleteGoal: (Goal) -> Unit,
-    onEditGoal: (String) -> Unit,
+    onEditGoal: (Goal) -> Unit,
     onDeleteGoal: (Goal) -> Unit
 ) {
     if (goals.isEmpty()) {
@@ -418,7 +416,7 @@ private fun GoalsList(
                     showEdit = isActiveTab,
                     progress = if (isActiveTab) goalWithProgress.remainingProgress else null,
                     onComplete = { onCompleteGoal(goalWithProgress.goal) },
-                    onEdit = { onEditGoal(goalWithProgress.goal.id) },
+                    onEdit = { onEditGoal(goalWithProgress.goal) },
                     onDelete = { onDeleteGoal(goalWithProgress.goal) }
                 )
             }
@@ -428,3 +426,29 @@ private fun GoalsList(
 
 private const val NO_ACTIVE_TEXT = "No active goals."
 private const val NO_COMPLETED_TEXT = "No completed goals yet."
+
+private sealed interface GoalEditorState {
+    data object Hidden : GoalEditorState
+    data object Creating : GoalEditorState
+    data class Editing(val goal: Goal) : GoalEditorState
+}
+
+private fun GoalEditorState.initialTitle() = when (this) {
+    GoalEditorState.Hidden, GoalEditorState.Creating -> ""
+    is GoalEditorState.Editing -> goal.title
+}
+
+private fun GoalEditorState.initialDescription() = when (this) {
+    GoalEditorState.Hidden, GoalEditorState.Creating -> ""
+    is GoalEditorState.Editing -> goal.description
+}
+
+private fun GoalEditorState.initialEndDate() = when (this) {
+    GoalEditorState.Hidden, GoalEditorState.Creating -> ""
+    is GoalEditorState.Editing -> goal.endDate
+}
+
+private fun GoalsUiState.visibleGoals(): List<GoalWithProgress> = when (currentTab) {
+    GoalsTab.ACTIVE -> activeGoals
+    GoalsTab.COMPLETED -> completedGoals.map { GoalWithProgress(it, 0f) }
+}

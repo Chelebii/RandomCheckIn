@@ -12,6 +12,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 
+// Central palettes stay private so UI surfaces consume them only through MaterialTheme.
 private val DarkColorScheme: ColorScheme = darkColorScheme(
     primary = AccentPurple,
     onPrimary = TextPrimaryNight,
@@ -33,6 +34,10 @@ private val DarkColorScheme: ColorScheme = darkColorScheme(
     inverseSurface = TextPrimaryNight
 )
 
+private val LightOnSurface = Color(0xFF211F35)
+private val LightOnSurfaceVariant = Color(0xFF4F4A74)
+private val LightOutline = Color(0xFFCAC4D9)
+
 private val LightColorScheme: ColorScheme = lightColorScheme(
     primary = LightPrimary,
     onPrimary = LightOnPrimary,
@@ -43,22 +48,27 @@ private val LightColorScheme: ColorScheme = lightColorScheme(
     secondaryContainer = LightSecondaryContainer,
     onSecondaryContainer = LightSecondary,
     background = LightBackground,
-    onBackground = Color(0xFF211F35),
+    onBackground = LightOnSurface,
     surface = LightSurface,
-    onSurface = Color(0xFF211F35),
+    onSurface = LightOnSurface,
     surfaceVariant = LightSurfaceVariant,
-    onSurfaceVariant = Color(0xFF4F4A74),
-    outline = Color(0xFFCAC4D9)
+    onSurfaceVariant = LightOnSurfaceVariant,
+    outline = LightOutline
 )
 
+/**
+ * Wraps MaterialTheme so every screen follows the same palette and typography while respecting
+ * system dark mode and (optionally) Android 12+ dynamic color surfaces.
+ */
 @Composable
 fun RandomCheckInTheme(
     darkTheme: Boolean = isSystemInDarkTheme(),
     dynamicColor: Boolean = false,
     content: @Composable () -> Unit
 ) {
+    val supportsDynamicColor = dynamicColor && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
     val colorScheme = when {
-        dynamicColor && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S -> {
+        supportsDynamicColor -> {
             val context = LocalContext.current
             if (darkTheme) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
         }

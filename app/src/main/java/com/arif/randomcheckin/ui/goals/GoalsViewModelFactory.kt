@@ -5,14 +5,19 @@ import androidx.lifecycle.ViewModelProvider
 import com.arif.randomcheckin.data.GoalRepository
 import com.arif.randomcheckin.data.GoalStore
 
-class GoalsViewModelFactory(private val goalStore: GoalStore) : ViewModelProvider.Factory {
+/**
+ * Centralizes GoalsViewModel creation so every instance shares the same GoalRepository, keeping
+ * business rules in the ViewModel/domain layers rather than the UI.
+ */
+class GoalsViewModelFactory(goalStore: GoalStore) : ViewModelProvider.Factory {
+
+    private val repository = GoalRepository(goalStore)
+
     @Suppress("UNCHECKED_CAST")
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
         if (modelClass.isAssignableFrom(GoalsViewModel::class.java)) {
-            val repository = GoalRepository(goalStore)
             return GoalsViewModel(repository) as T
         }
         throw IllegalArgumentException("Unknown ViewModel class: ${modelClass.name}")
     }
 }
-
