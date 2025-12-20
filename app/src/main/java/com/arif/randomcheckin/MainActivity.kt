@@ -106,6 +106,13 @@ fun GoalListScreen(
     val state by viewModel.state.collectAsState()
     val isActiveTab = state.currentTab == GoalsTab.ACTIVE
     val visibleGoals by remember(state) { derivedStateOf { state.visibleGoals() } }
+    val handleAddGoal: () -> Unit = {
+        if (state.canAddMoreActive) {
+            goalEditor = GoalEditorState.Creating
+        } else {
+            viewModel.showLimitInfo()
+        }
+    }
     BackHandler(enabled = state.showLimitInfo) { viewModel.hideLimitInfo() }
 
     val dismissEditor: () -> Unit = { goalEditor = GoalEditorState.Hidden }
@@ -199,19 +206,14 @@ fun GoalListScreen(
                     colorScheme = colorScheme,
                     onCompleteGoal = viewModel::markCompleted,
                     onEditGoal = { goal -> goalEditor = GoalEditorState.Editing(goal) },
-                    onDeleteGoal = viewModel::requestDelete
+                    onDeleteGoal = viewModel::requestDelete,
+                    onAddGoal = handleAddGoal
                 )
                 Spacer(modifier = Modifier.height(28.dp))
 
                 if (isActiveTab) {
                     FilledTonalButton(
-                        onClick = {
-                            if (state.canAddMoreActive) {
-                                goalEditor = GoalEditorState.Creating
-                            } else {
-                                viewModel.showLimitInfo()
-                            }
-                        },
+                        onClick = handleAddGoal,
                         modifier = Modifier.fillMaxWidth(),
                         colors = ButtonDefaults.filledTonalButtonColors(
                             containerColor = if (!state.canAddMoreActive) colorScheme.surfaceVariant.copy(alpha = 0.5f) else colorScheme.primaryContainer,
@@ -286,15 +288,21 @@ private fun GoalCard(
             Spacer(modifier = Modifier.height(10.dp))
             Text("Ends ${goal.endDate}", color = colorScheme.onSurfaceVariant)
             if (progress != null) {
+                val barColor = if (progress <= 0.1f) colorScheme.error else colorScheme.primary
                 Spacer(modifier = Modifier.height(12.dp))
-                LinearProgressIndicator(
-                    progress = progress,
+                Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(4.dp),
-                    trackColor = colorScheme.surfaceVariant,
-                    color = colorScheme.primary
-                )
+                        .height(2.dp)
+                        .background(colorScheme.surface)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth(progress)
+                            .height(2.dp)
+                            .background(barColor)
+                    )
+                }
             }
             if (showComplete) {
                 IconButton(
@@ -391,17 +399,33 @@ private fun GoalsList(
     colorScheme: ColorScheme,
     onCompleteGoal: (Goal) -> Unit,
     onEditGoal: (Goal) -> Unit,
-    onDeleteGoal: (Goal) -> Unit
+    onDeleteGoal: (Goal) -> Unit,
+    onAddGoal: () -> Unit
 ) {
     if (goals.isEmpty()) {
         Box(
             modifier = modifier.fillMaxWidth(),
             contentAlignment = Alignment.Center
         ) {
-            Text(
-                text = if (isActiveTab) NO_ACTIVE_TEXT else NO_COMPLETED_TEXT,
-                color = colorScheme.onBackground.copy(alpha = 0.75f)
-            )
+            if (isActiveTab) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text(
+                        text = ACTIVE_EMPTY_TEXT,
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = colorScheme.onBackground.copy(alpha = 0.8f)
+                    )
+                    Spacer(modifier = Modifier.height(16.dp))
+                    TextButton(onClick = onAddGoal) {
+                        Text("Add goal")
+                    }
+                }
+            } else {
+                Text(
+                    text = COMPLETED_EMPTY_TEXT,
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = colorScheme.onBackground.copy(alpha = 0.8f)
+                )
+            }
         }
     } else {
         LazyColumn(
@@ -424,8 +448,8 @@ private fun GoalsList(
     }
 }
 
-private const val NO_ACTIVE_TEXT = "No active goals."
-private const val NO_COMPLETED_TEXT = "No completed goals yet."
+private const val ACTIVE_EMPTY_TEXT = "Start with one clear goal."
+private const val COMPLETED_EMPTY_TEXT = "No completed goals yet. Time will take care of that."
 
 private sealed interface GoalEditorState {
     data object Hidden : GoalEditorState

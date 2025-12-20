@@ -16,6 +16,7 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import java.time.LocalDate
+import java.time.LocalDateTime
 
 data class GoalsUiState(
     val activeGoals: List<GoalWithProgress> = emptyList(),
@@ -45,10 +46,7 @@ class GoalsViewModel(private val repository: GoalRepository) : ViewModel() {
         observeGoals()
     }
 
-    /**
-     * Repository is the single source of truth for goal status; we merge its snapshot with
-     * UI-specific flags (tab, dialogs) to honor the max-active rule without UI shortcuts.
-     */
+    /** Captures the current time once per flow emission so progress stays calm until resume. */
     private fun observeGoals() {
         viewModelScope.launch {
             repository.goalsFlow()
@@ -88,8 +86,8 @@ class GoalsViewModel(private val repository: GoalRepository) : ViewModel() {
         }
     }
 
-    fun calculateRemainingProgress(goal: Goal, today: LocalDate = LocalDate.now()): Float =
-        goal.remainingProgress(today)
+    fun calculateRemainingProgress(goal: Goal, reference: LocalDateTime = LocalDateTime.now()): Float =
+        goal.remainingProgress(reference)
 
     fun markCompleted(goal: Goal) {
         viewModelScope.launch {
@@ -107,10 +105,11 @@ class GoalsViewModel(private val repository: GoalRepository) : ViewModel() {
     }
 
     private fun List<Goal>.toSnapshot(): GoalsSnapshot {
-        val today = LocalDate.now()
+        val now = LocalDateTime.now()
+        val today = now.toLocalDate()
         val (active, completed) = partition { it.isActive(today) }
         return GoalsSnapshot(
-            active = active.map { GoalWithProgress(it, it.remainingProgress(today)) },
+            active = active.map { GoalWithProgress(it, it.remainingProgress(now)) },
             completed = completed,
             canAddMoreActive = active.size < MAX_ACTIVE_GOALS
         )
