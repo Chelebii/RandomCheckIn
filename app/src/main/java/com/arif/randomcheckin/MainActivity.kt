@@ -27,6 +27,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -107,11 +108,7 @@ fun GoalListScreen(
     val isActiveTab = state.currentTab == GoalsTab.ACTIVE
     val visibleGoals by remember(state) { derivedStateOf { state.visibleGoals() } }
     val handleAddGoal: () -> Unit = {
-        if (state.canAddMoreActive) {
-            goalEditor = GoalEditorState.Creating
-        } else {
-            viewModel.showLimitInfo()
-        }
+        if (state.canAddMoreActive) goalEditor = GoalEditorState.Creating else viewModel.showLimitInfo()
     }
     BackHandler(enabled = state.showLimitInfo) { viewModel.hideLimitInfo() }
 
@@ -144,10 +141,10 @@ fun GoalListScreen(
     }
 
     Surface(color = colorScheme.background, modifier = Modifier.fillMaxSize()) {
-        Box(modifier = Modifier.fillMaxSize()) {
+        Column(modifier = Modifier.fillMaxSize()) {
             Column(
                 modifier = Modifier
-                    .fillMaxSize()
+                    .weight(1f)
                     .padding(horizontal = 16.dp, vertical = 20.dp)
             ) {
 
@@ -187,30 +184,26 @@ fun GoalListScreen(
 
                 Spacer(modifier = Modifier.height(24.dp))
 
-                TabRow(selectedTabIndex = state.currentTab.ordinal) {
-                    GoalsTab.values().forEachIndexed { index, tab ->
-                        Tab(
-                            selected = state.currentTab == tab,
-                            onClick = { viewModel.setTab(tab) },
-                            text = { Text(tab.name.lowercase().replaceFirstChar { it.titlecase() }) }
-                        )
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(16.dp))
-
                 GoalsList(
-                    modifier = Modifier.weight(1f),
+                    modifier = Modifier.fillMaxSize(),
                     goals = visibleGoals,
                     isActiveTab = isActiveTab,
                     colorScheme = colorScheme,
                     onCompleteGoal = viewModel::markCompleted,
                     onEditGoal = { goal -> goalEditor = GoalEditorState.Editing(goal) },
                     onDeleteGoal = viewModel::requestDelete,
-                    onAddGoal = handleAddGoal
+                    onAddGoal = handleAddGoal,
+                    bottomContentPadding = if (isActiveTab) 120.dp else 80.dp
                 )
-                Spacer(modifier = Modifier.height(28.dp))
+            }
 
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .navigationBarsPadding()
+                    .padding(horizontal = 16.dp, vertical = 12.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
                 if (isActiveTab) {
                     FilledTonalButton(
                         onClick = handleAddGoal,
@@ -222,26 +215,18 @@ fun GoalListScreen(
                     ) {
                         Text(if (!state.canAddMoreActive) "Goal limit reached" else "Add goal")
                     }
+                    Spacer(modifier = Modifier.height(8.dp))
                 }
-            }
 
-            if (state.pendingDelete != null) {
-                DeleteConfirmationDialog(
-                    colorScheme = colorScheme,
-                    onDismiss = { viewModel.cancelDelete() },
-                    onConfirm = { viewModel.confirmDelete() }
-                )
-            }
-
-            AnimatedVisibility(
-                visible = state.showLimitInfo,
-                enter = fadeIn(animationSpec = tween(durationMillis = 180)),
-                exit = fadeOut(animationSpec = tween(durationMillis = 180))
-            ) {
-                GoalLimitOverlay(
-                    colorScheme = colorScheme,
-                    onDismiss = { viewModel.hideLimitInfo() }
-                )
+                TabRow(selectedTabIndex = state.currentTab.ordinal) {
+                    GoalsTab.values().forEach { tab ->
+                        Tab(
+                            selected = state.currentTab == tab,
+                            onClick = { viewModel.setTab(tab) },
+                            text = { Text(tab.name.lowercase().replaceFirstChar { it.titlecase() }) }
+                        )
+                    }
+                }
             }
         }
     }
@@ -400,7 +385,8 @@ private fun GoalsList(
     onCompleteGoal: (Goal) -> Unit,
     onEditGoal: (Goal) -> Unit,
     onDeleteGoal: (Goal) -> Unit,
-    onAddGoal: () -> Unit
+    onAddGoal: () -> Unit,
+    bottomContentPadding: Dp
 ) {
     if (goals.isEmpty()) {
         Box(
@@ -430,7 +416,8 @@ private fun GoalsList(
     } else {
         LazyColumn(
             modifier = modifier.fillMaxWidth(),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+            contentPadding = PaddingValues(bottom = bottomContentPadding)
         ) {
             items(goals, key = { it.goal.id }) { goalWithProgress ->
                 GoalCard(

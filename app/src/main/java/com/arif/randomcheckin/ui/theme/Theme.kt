@@ -16,22 +16,21 @@ import androidx.compose.ui.platform.LocalContext
 private val DarkColorScheme: ColorScheme = darkColorScheme(
     primary = AccentPurple,
     onPrimary = TextPrimaryNight,
-    primaryContainer = AccentPurpleContainer,
+    primaryContainer = AccentPurple,
     onPrimaryContainer = TextPrimaryNight,
     secondary = AccentBlue,
     onSecondary = TextPrimaryNight,
-    secondaryContainer = AccentBlueContainer,
+    secondaryContainer = AccentBlue,
     onSecondaryContainer = TextPrimaryNight,
-    background = DeepSpace,
-    onBackground = TextPrimaryNight,
-    surface = CardOnyx,
-    onSurface = TextPrimaryNight,
-    surfaceVariant = CardSlate,
-    onSurfaceVariant = TextSecondaryNight,
-    outline = OutlineNight,
-    outlineVariant = OutlineNight,
-    inverseOnSurface = NightBlack,
-    inverseSurface = TextPrimaryNight
+    background = Color(0xFF050607),
+    onBackground = Color(0xFFE9EDF2),
+    surface = Color(0xFF0B0D10),
+    onSurface = Color(0xFFE9EDF2),
+    surfaceVariant = Color(0xFF10141A),
+    onSurfaceVariant = Color(0xFFB4BCC7),
+    outline = Color(0xFF1A202A),
+    inverseOnSurface = Color(0xFF0B0D10),
+    inverseSurface = Color(0xFFE9EDF2)
 )
 
 private val LightOnSurface = Color(0xFF211F35)
