@@ -51,6 +51,10 @@ class GoalStore(private val context: Context) {
         prefs.goalList()
     }
 
+    /**
+     * Persists a new goal while enforcing business constraints: start date is today, end dates cannot be in the past,
+     * and only [MAX_ACTIVE_GOALS] active goals may exist at any time.
+     */
     suspend fun addGoal(title: String, description: String, endDate: String) {
         val trimmedEndDate = endDate.trim()
         context.dataStore.edit { prefs ->
@@ -77,8 +81,10 @@ class GoalStore(private val context: Context) {
         }
     }
 
-    suspend fun updateGoal(goalId: GoalId, title: String, description: String, endDate: String) {
-        val trimmedEndDate = endDate.trim()
+    /**
+     * Updates an existing goal and re-validates the active goal cap so edits cannot sneak past the focus rule.
+     */
+    suspend fun updateGoal(goalId: String, title: String, description: String, endDate: String) {
         context.dataStore.edit { prefs ->
             val stored = prefs.goalList()
             val index = stored.indexOfFirst { it.id == goalId }
@@ -99,10 +105,10 @@ class GoalStore(private val context: Context) {
     }
 
     /**
-     * Completing backdates the end date by one day so isActive() flips immediately without
-     * modifying the recorded start date.
+     * Marks a goal as completed by shifting its end date to yesterday, which causes it to be filtered into the
+     * completed tab without requiring UI-side logic.
      */
-    suspend fun completeGoal(goalId: GoalId) {
+    suspend fun completeGoal(goalId: String) {
         context.dataStore.edit { prefs ->
             val stored = prefs.goalList()
             val index = stored.indexOfFirst { it.id == goalId }
