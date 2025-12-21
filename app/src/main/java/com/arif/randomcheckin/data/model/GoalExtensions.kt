@@ -1,23 +1,25 @@
 package com.arif.randomcheckin.data.model
 
 import java.time.LocalDate
+import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
+import java.time.temporal.ChronoUnit
 
 /** Shared formatter for dd.MM.yyyy goal dates. */
 val goalDateFormatter: DateTimeFormatter = DateTimeFormatter.ofPattern("dd.MM.yyyy")
 
-fun Goal.startDateOrNull(): LocalDate? = runCatching {
-    LocalDate.parse(startDate.trim(), goalDateFormatter)
-}.getOrNull()
+/** Shared formatter keeps all goal dates aligned with the same display/parsing pattern. */
+val goalDateFormatter: DateTimeFormatter = DateTimeFormatter.ofPattern(GOAL_DATE_PATTERN)
 
-fun Goal.endDateOrNull(): LocalDate? = runCatching {
-    LocalDate.parse(endDate.trim(), goalDateFormatter)
+/** Single parsing entry prevents drift in trimming/format rules across date fields. */
+private fun parseGoalDateOrNull(raw: String): LocalDate? = runCatching {
+    LocalDate.parse(raw.trim(), goalDateFormatter)
 }.getOrNull()
 
 /** Goals are active until the day before their end date; expired goals should move to Completed automatically. */
 fun Goal.isActive(referenceDate: LocalDate = LocalDate.now()): Boolean {
-    val goalDate = endDateOrNull()
-    return goalDate?.isBefore(referenceDate) != true
+    val goalEndDate = endDateOrNull()
+    return goalEndDate?.isBefore(referenceDate) != true
 }
 
 /**
@@ -35,4 +37,5 @@ fun Goal.remainingProgress(today: LocalDate = LocalDate.now()): Float {
     return remaining.coerceIn(0f, 1f)
 }
 
+/** Completed state is the inverse of [isActive] to keep a single source of truth. */
 fun Goal.isCompleted(referenceDate: LocalDate = LocalDate.now()): Boolean = !isActive(referenceDate)

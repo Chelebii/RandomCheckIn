@@ -8,14 +8,12 @@ import com.arif.randomcheckin.data.model.Goal
 import com.arif.randomcheckin.data.model.isActive
 import com.arif.randomcheckin.data.model.remainingProgress
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.map
-import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
-import java.time.LocalDate
+import java.time.LocalDateTime
 
 data class GoalsUiState(
     val activeGoals: List<GoalWithProgress> = emptyList(),
@@ -30,42 +28,35 @@ data class GoalWithProgress(val goal: Goal, val remainingProgress: Float)
 
 enum class GoalsTab { ACTIVE, COMPLETED }
 
-class GoalsViewModel(private val repository: GoalRepository) : ViewModel() {
+private data class GoalsSnapshot(
+    val active: List<GoalWithProgress> = emptyList(),
+    val completed: List<Goal> = emptyList(),
+    val canAddMoreActive: Boolean = true
+)
 
-    private val backingState: StateFlow<GoalsUiState> = repository.goalsFlow()
-        .map { goals ->
-            val today = LocalDate.now()
-            val (active, completed) = goals.partition { it.isActive(today) }
-            // ensure expired goals move to completed via date logic only
-            GoalsUiState(
-                activeGoals = active.map { GoalWithProgress(it, calculateRemainingProgress(it, today)) },
-                completedGoals = completed,
-                canAddMoreActive = active.size < MAX_ACTIVE_GOALS,
-                currentTab = _uiState.value.currentTab,
-                pendingDelete = _uiState.value.pendingDelete,
-                showLimitInfo = _uiState.value.showLimitInfo
-            )
-        }
-        .stateIn(
-            scope = viewModelScope,
-            started = SharingStarted.WhileSubscribed(5_000),
-            initialValue = GoalsUiState()
-        )
+class GoalsViewModel(private val repository: GoalRepository) : ViewModel() {
 
     private val _uiState = MutableStateFlow(GoalsUiState())
     val state: StateFlow<GoalsUiState> = _uiState.asStateFlow()
 
     init {
+        observeGoals()
+    }
+
+    /** Captures the current time once per flow emission so progress stays calm until resume. */
+    private fun observeGoals() {
         viewModelScope.launch {
-            backingState.collect { derived ->
-                _uiState.update { current ->
-                    derived.copy(
-                        currentTab = current.currentTab,
-                        pendingDelete = current.pendingDelete,
-                        showLimitInfo = current.showLimitInfo
-                    )
+            repository.goalsFlow()
+                .map { goals -> goals.toSnapshot() }
+                .collect { snapshot ->
+                    _uiState.update { current ->
+                        current.copy(
+                            activeGoals = snapshot.active,
+                            completedGoals = snapshot.completed,
+                            canAddMoreActive = snapshot.canAddMoreActive
+                        )
+                    }
                 }
-            }
         }
     }
 
@@ -92,7 +83,8 @@ class GoalsViewModel(private val repository: GoalRepository) : ViewModel() {
         }
     }
 
-    fun calculateRemainingProgress(goal: Goal, today: LocalDate = LocalDate.now()): Float = goal.remainingProgress(today)
+    fun calculateRemainingProgress(goal: Goal, reference: LocalDateTime = LocalDateTime.now()): Float =
+        goal.remainingProgress(reference)
 
     fun markCompleted(goal: Goal) {
         viewModelScope.launch {
@@ -107,5 +99,16 @@ class GoalsViewModel(private val repository: GoalRepository) : ViewModel() {
 
     suspend fun updateGoal(goalId: String, title: String, description: String, endDate: String) {
         repository.updateGoal(goalId, title, description, endDate)
+    }
+
+    private fun List<Goal>.toSnapshot(): GoalsSnapshot {
+        val now = LocalDateTime.now()
+        val today = now.toLocalDate()
+        val (active, completed) = partition { it.isActive(today) }
+        return GoalsSnapshot(
+            active = active.map { GoalWithProgress(it, it.remainingProgress(now)) },
+            completed = completed,
+            canAddMoreActive = active.size < MAX_ACTIVE_GOALS
+        )
     }
 }

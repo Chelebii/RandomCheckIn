@@ -12,26 +12,30 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 
+// Central palettes stay private so UI surfaces consume them only through MaterialTheme.
 private val DarkColorScheme: ColorScheme = darkColorScheme(
     primary = AccentPurple,
     onPrimary = TextPrimaryNight,
-    primaryContainer = AccentPurpleContainer,
+    primaryContainer = AccentPurple,
     onPrimaryContainer = TextPrimaryNight,
     secondary = AccentBlue,
     onSecondary = TextPrimaryNight,
-    secondaryContainer = AccentBlueContainer,
+    secondaryContainer = AccentBlue,
     onSecondaryContainer = TextPrimaryNight,
-    background = DeepSpace,
-    onBackground = TextPrimaryNight,
-    surface = CardOnyx,
-    onSurface = TextPrimaryNight,
-    surfaceVariant = CardSlate,
-    onSurfaceVariant = TextSecondaryNight,
-    outline = OutlineNight,
-    outlineVariant = OutlineNight,
-    inverseOnSurface = NightBlack,
-    inverseSurface = TextPrimaryNight
+    background = Color(0xFF050607),
+    onBackground = Color(0xFFE9EDF2),
+    surface = Color(0xFF0B0D10),
+    onSurface = Color(0xFFE9EDF2),
+    surfaceVariant = Color(0xFF10141A),
+    onSurfaceVariant = Color(0xFFB4BCC7),
+    outline = Color(0xFF1A202A),
+    inverseOnSurface = Color(0xFF0B0D10),
+    inverseSurface = Color(0xFFE9EDF2)
 )
+
+private val LightOnSurface = Color(0xFF211F35)
+private val LightOnSurfaceVariant = Color(0xFF4F4A74)
+private val LightOutline = Color(0xFFCAC4D9)
 
 private val LightColorScheme: ColorScheme = lightColorScheme(
     primary = LightPrimary,
@@ -43,22 +47,27 @@ private val LightColorScheme: ColorScheme = lightColorScheme(
     secondaryContainer = LightSecondaryContainer,
     onSecondaryContainer = LightSecondary,
     background = LightBackground,
-    onBackground = Color(0xFF211F35),
+    onBackground = LightOnSurface,
     surface = LightSurface,
-    onSurface = Color(0xFF211F35),
+    onSurface = LightOnSurface,
     surfaceVariant = LightSurfaceVariant,
-    onSurfaceVariant = Color(0xFF4F4A74),
-    outline = Color(0xFFCAC4D9)
+    onSurfaceVariant = LightOnSurfaceVariant,
+    outline = LightOutline
 )
 
+/**
+ * Wraps MaterialTheme so every screen follows the same palette and typography while respecting
+ * system dark mode and (optionally) Android 12+ dynamic color surfaces.
+ */
 @Composable
 fun RandomCheckInTheme(
     darkTheme: Boolean = isSystemInDarkTheme(),
     dynamicColor: Boolean = false,
     content: @Composable () -> Unit
 ) {
+    val supportsDynamicColor = dynamicColor && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
     val colorScheme = when {
-        dynamicColor && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S -> {
+        supportsDynamicColor -> {
             val context = LocalContext.current
             if (darkTheme) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
         }

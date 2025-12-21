@@ -1,6 +1,5 @@
 package com.arif.randomcheckin.notifications
 
-import com.arif.randomcheckin.data.GoalStore
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -9,15 +8,17 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import com.arif.randomcheckin.data.GoalStore
 import kotlinx.coroutines.launch
+
+private const val DAILY_NOTE_MAX_CHAR = 160
 
 class CheckInActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        val store = GoalStore(this)
-        val activity = this
+        val goalStore = GoalStore(this)
 
         setContent {
             val scope = rememberCoroutineScope()
@@ -25,17 +26,21 @@ class CheckInActivity : ComponentActivity() {
                 CheckInScreen(
                     onSave = { note ->
                         scope.launch {
-                            store.saveDailyNote(note)
-                            activity.finish()
+                            goalStore.saveDailyNote(note)
+                            finish()
                         }
                     },
-                    onCancel = { activity.finish() }
+                    onCancel = { finish() }
                 )
             }
         }
     }
 }
 
+/**
+ * Lightweight screen hosts the text input directly inside the notification activity so no ViewModel
+ * is needed; note text stays local because business rules live elsewhere.
+ */
 @Composable
 private fun CheckInScreen(
     onSave: (String) -> Unit,
@@ -57,7 +62,11 @@ private fun CheckInScreen(
 
         OutlinedTextField(
             value = note,
-            onValueChange = { if (it.length <= 160) note = it },
+            onValueChange = { updated ->
+                if (updated.length <= DAILY_NOTE_MAX_CHAR) {
+                    note = updated
+                }
+            },
             label = { Text("Kısa yorum (isteğe bağlı)") },
             modifier = Modifier.fillMaxWidth(),
             minLines = 3
