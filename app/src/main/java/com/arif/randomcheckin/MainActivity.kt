@@ -4,10 +4,6 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.core.tween
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -29,7 +25,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.window.Dialog
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.arif.randomcheckin.data.GoalStore
 import com.arif.randomcheckin.data.model.Goal
@@ -107,7 +102,7 @@ fun GoalListScreen(
     val state by viewModel.state.collectAsState()
     val isActiveTab = state.currentTab == GoalsTab.ACTIVE
     val visibleGoals by remember(state) { derivedStateOf { state.visibleGoals() } }
-    val handleAddGoal: () -> Unit = {
+    val startCreatingGoal: () -> Unit = {
         if (state.canAddMoreActive) goalEditor = GoalEditorState.Creating else viewModel.showLimitInfo()
     }
     BackHandler(enabled = state.showLimitInfo) { viewModel.hideLimitInfo() }
@@ -130,7 +125,7 @@ fun GoalListScreen(
                             GoalEditorState.Hidden -> Unit
                         }
                         goalEditor = GoalEditorState.Hidden
-                    } catch (limit: IllegalStateException) {
+                    } catch (_: IllegalStateException) {
                         viewModel.showLimitInfo()
                     }
                 }
@@ -192,7 +187,7 @@ fun GoalListScreen(
                     onCompleteGoal = viewModel::markCompleted,
                     onEditGoal = { goal -> goalEditor = GoalEditorState.Editing(goal) },
                     onDeleteGoal = viewModel::requestDelete,
-                    onAddGoal = handleAddGoal,
+                    onAddGoal = startCreatingGoal,
                     bottomContentPadding = if (isActiveTab) 120.dp else 80.dp
                 )
             }
@@ -206,7 +201,7 @@ fun GoalListScreen(
             ) {
                 if (isActiveTab) {
                     FilledTonalButton(
-                        onClick = handleAddGoal,
+                        onClick = startCreatingGoal,
                         modifier = Modifier.fillMaxWidth(),
                         colors = ButtonDefaults.filledTonalButtonColors(
                             containerColor = if (!state.canAddMoreActive) colorScheme.surfaceVariant.copy(alpha = 0.5f) else colorScheme.primaryContainer,
@@ -299,31 +294,6 @@ private fun GoalCard(
                         contentDescription = "Mark as completed",
                         tint = colorScheme.primary
                     )
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun DeleteConfirmationDialog(
-    colorScheme: ColorScheme,
-    onDismiss: () -> Unit,
-    onConfirm: () -> Unit
-) {
-    Dialog(onDismissRequest = onDismiss) {
-        Card(shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = colorScheme.surface)) {
-            Column(modifier = Modifier.padding(24.dp)) {
-                Text("Delete this goal?", style = MaterialTheme.typography.titleLarge, color = colorScheme.onSurface)
-                Spacer(modifier = Modifier.height(8.dp))
-                Text("This action can’t be undone.", color = colorScheme.onSurfaceVariant)
-                Spacer(modifier = Modifier.height(20.dp))
-                Row(horizontalArrangement = Arrangement.End, modifier = Modifier.fillMaxWidth()) {
-                    TextButton(onClick = onDismiss) { Text("Cancel") }
-                    Spacer(modifier = Modifier.width(12.dp))
-                    Button(onClick = onConfirm, colors = ButtonDefaults.buttonColors(containerColor = colorScheme.errorContainer, contentColor = colorScheme.onErrorContainer)) {
-                        Text("Delete")
-                    }
                 }
             }
         }
