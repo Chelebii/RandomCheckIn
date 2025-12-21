@@ -19,6 +19,7 @@ import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.LightMode
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -39,7 +40,9 @@ import com.arif.randomcheckin.ui.theme.RandomCheckInTheme
 import com.google.accompanist.systemuicontroller.rememberSystemUiController
 import kotlinx.coroutines.launch
 
-// MainActivity: Uygulama açılınca çalışan ana Android Activity (ekranın giriş kapısı)
+/**
+ * Hosts the RandomCheckIn experience. Keeps the activity lean by delegating all logic to Compose and the ViewModel.
+ */
 class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -89,6 +92,9 @@ fun RandomCheckInApp() {
     }
 }
 
+/**
+ * High-level goals UI. UI remains stateless by observing [GoalsViewModel] and emitting user intents back.
+ */
 @Composable
 fun GoalListScreen(
     goalStore: GoalStore,
@@ -135,6 +141,54 @@ fun GoalListScreen(
         return
     }
 
+    GoalListContent(
+        state = state,
+        currentTheme = currentTheme,
+        onThemeChange = onThemeChange,
+        visibleGoals = visibleGoals,
+        isActiveTab = isActiveTab,
+        onAddGoal = {
+            if (state.canAddMoreActive) {
+                editingGoalId = null
+                showAddScreen = true
+            } else {
+                viewModel.showLimitInfo()
+            }
+        },
+        onEditGoal = { goalId ->
+            editingGoalId = goalId
+            showAddScreen = true
+        },
+        onCompleteGoal = viewModel::markCompleted,
+        onDeleteGoal = viewModel::requestDelete,
+        onDismissDelete = viewModel::cancelDelete,
+        onConfirmDelete = viewModel::confirmDelete,
+        onHideLimitInfo = viewModel::hideLimitInfo,
+        onTabSelected = viewModel::setTab
+    )
+}
+
+/**
+ * Stateless container that wires UI controls to events while showing either the Active or Completed tab.
+ */
+@Composable
+private fun GoalListContent(
+    state: GoalsUiState,
+    currentTheme: ThemeMode,
+    onThemeChange: (ThemeMode) -> Unit,
+    visibleGoals: List<GoalWithProgress>,
+    isActiveTab: Boolean,
+    onAddGoal: () -> Unit,
+    onEditGoal: (String) -> Unit,
+    onCompleteGoal: (Goal) -> Unit,
+    onDeleteGoal: (Goal) -> Unit,
+    onDismissDelete: () -> Unit,
+    onConfirmDelete: () -> Unit,
+    onHideLimitInfo: () -> Unit,
+    onTabSelected: (GoalsTab) -> Unit
+) {
+    val colorScheme = MaterialTheme.colorScheme
+
     Surface(color = colorScheme.background, modifier = Modifier.fillMaxSize()) {
         Column(modifier = Modifier.fillMaxSize()) {
             Column(
@@ -142,41 +196,7 @@ fun GoalListScreen(
                     .weight(1f)
                     .padding(horizontal = 16.dp, vertical = 20.dp)
             ) {
-
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Column {
-                        Text(
-                            text = "Goals",
-                            style = MaterialTheme.typography.headlineMedium,
-                            color = colorScheme.onBackground
-                        )
-                        Text(
-                            text = "Stay consistent every night",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = colorScheme.onBackground.copy(alpha = 0.7f)
-                        )
-                    }
-                    FilledIconButton(
-                        onClick = {
-                            val nextMode = if (currentTheme == ThemeMode.DARK) ThemeMode.LIGHT else ThemeMode.DARK
-                            onThemeChange(nextMode)
-                        },
-                        colors = IconButtonDefaults.filledIconButtonColors(
-                            containerColor = colorScheme.surfaceVariant,
-                            contentColor = colorScheme.onSurface
-                        )
-                    ) {
-                        Icon(
-                            imageVector = if (currentTheme == ThemeMode.DARK) Icons.Filled.LightMode else Icons.Filled.DarkMode,
-                            contentDescription = "Toggle theme"
-                        )
-                    }
-                }
-
+                Header(currentTheme = currentTheme) { onThemeChange(it) }
                 Spacer(modifier = Modifier.height(24.dp))
 
                 GoalsList(
@@ -227,6 +247,7 @@ fun GoalListScreen(
     }
 }
 
+/** Card UI for a single goal. Receives all state via params so previews stay easy. */
 @Composable
 private fun GoalCard(
     goal: Goal,
