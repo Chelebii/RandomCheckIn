@@ -28,7 +28,7 @@ const val MAX_ACTIVE_GOALS = 3
 private const val DATA_STORE_NAME = "goal_store"
 private const val DEFAULT_ACTIVE_WINDOW_START_MIN = 9 * 60
 private const val DEFAULT_ACTIVE_WINDOW_END_MIN = 21 * 60
-private const val MINUTES_PER_DAY = (24 * 60) - 1
+private const val LAST_MINUTE_OF_DAY = (24 * 60) - 1
 private const val NOTE_DATE_PATTERN = "yyyy-MM-dd"
 
 private val Context.dataStore by preferencesDataStore(name = DATA_STORE_NAME)
@@ -129,8 +129,8 @@ class GoalStore(private val context: Context) {
 
     /** Clamps inputs to valid minutes so notifications never read outside a single 24h window. */
     suspend fun setActiveWindow(startMin: Int, endMin: Int) {
-        val safeStart = startMin.coerceIn(0, MINUTES_PER_DAY)
-        val safeEnd = endMin.coerceIn(0, MINUTES_PER_DAY)
+        val safeStart = startMin.coerceIn(0, LAST_MINUTE_OF_DAY)
+        val safeEnd = endMin.coerceIn(0, LAST_MINUTE_OF_DAY)
         context.dataStore.edit { prefs ->
             prefs[START_MIN_KEY] = safeStart
             prefs[END_MIN_KEY] = safeEnd

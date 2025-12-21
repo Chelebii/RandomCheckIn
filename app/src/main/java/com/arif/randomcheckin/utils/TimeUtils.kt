@@ -27,7 +27,15 @@ object TimeUtils {
             endMinute
         }
 
-        val randomMinute = Random.nextInt(startMinute, inclusiveEnd + 1)
+        // If the fallback expansion is clamped to a single minute at the end of day,
+        // widen the window backwards to preserve randomness.
+        val windowStart = if (inclusiveEnd == startMinute && startMinute == LAST_MINUTE_OF_DAY) {
+            (inclusiveEnd - FALLBACK_WINDOW_MINUTES + 1).coerceAtLeast(0)
+        } else {
+            startMinute
+        }
+
+        val randomMinute = Random.nextInt(windowStart, inclusiveEnd + 1)
 
         val target = (now.clone() as Calendar).apply {
             set(Calendar.HOUR_OF_DAY, randomMinute / MINUTES_PER_HOUR)

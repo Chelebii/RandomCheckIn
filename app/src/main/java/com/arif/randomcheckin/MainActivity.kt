@@ -26,6 +26,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Dialog
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.arif.randomcheckin.data.GoalStore
 import com.arif.randomcheckin.data.model.Goal
@@ -141,29 +142,33 @@ fun GoalListScreen(
         return
     }
 
+    // Show delete confirmation dialog when pendingDelete is set
+    if (state.pendingDelete != null) {
+        DeleteConfirmationDialog(
+            colorScheme = colorScheme,
+            onDismiss = viewModel::cancelDelete,
+            onConfirm = viewModel::confirmDelete
+        )
+    }
+
+    // Show goal limit overlay when showLimitInfo is true
+    if (state.showLimitInfo) {
+        GoalLimitOverlay(
+            colorScheme = colorScheme,
+            onDismiss = viewModel::hideLimitInfo
+        )
+    }
+
     GoalListContent(
         state = state,
         currentTheme = currentTheme,
         onThemeChange = onThemeChange,
         visibleGoals = visibleGoals,
         isActiveTab = isActiveTab,
-        onAddGoal = {
-            if (state.canAddMoreActive) {
-                editingGoalId = null
-                showAddScreen = true
-            } else {
-                viewModel.showLimitInfo()
-            }
-        },
-        onEditGoal = { goalId ->
-            editingGoalId = goalId
-            showAddScreen = true
-        },
+        onAddGoal = startCreatingGoal,
+        onEditGoal = { goal -> goalEditor = GoalEditorState.Editing(goal) },
         onCompleteGoal = viewModel::markCompleted,
         onDeleteGoal = viewModel::requestDelete,
-        onDismissDelete = viewModel::cancelDelete,
-        onConfirmDelete = viewModel::confirmDelete,
-        onHideLimitInfo = viewModel::hideLimitInfo,
         onTabSelected = viewModel::setTab
     )
 }
@@ -179,12 +184,9 @@ private fun GoalListContent(
     visibleGoals: List<GoalWithProgress>,
     isActiveTab: Boolean,
     onAddGoal: () -> Unit,
-    onEditGoal: (String) -> Unit,
+    onEditGoal: (Goal) -> Unit,
     onCompleteGoal: (Goal) -> Unit,
     onDeleteGoal: (Goal) -> Unit,
-    onDismissDelete: () -> Unit,
-    onConfirmDelete: () -> Unit,
-    onHideLimitInfo: () -> Unit,
     onTabSelected: (GoalsTab) -> Unit
 ) {
     val colorScheme = MaterialTheme.colorScheme
@@ -204,10 +206,10 @@ private fun GoalListContent(
                     goals = visibleGoals,
                     isActiveTab = isActiveTab,
                     colorScheme = colorScheme,
-                    onCompleteGoal = viewModel::markCompleted,
-                    onEditGoal = { goal -> goalEditor = GoalEditorState.Editing(goal) },
-                    onDeleteGoal = viewModel::requestDelete,
-                    onAddGoal = startCreatingGoal,
+                    onCompleteGoal = onCompleteGoal,
+                    onEditGoal = onEditGoal,
+                    onDeleteGoal = onDeleteGoal,
+                    onAddGoal = onAddGoal,
                     bottomContentPadding = if (isActiveTab) 120.dp else 80.dp
                 )
             }
@@ -221,7 +223,7 @@ private fun GoalListContent(
             ) {
                 if (isActiveTab) {
                     FilledTonalButton(
-                        onClick = startCreatingGoal,
+                        onClick = onAddGoal,
                         modifier = Modifier.fillMaxWidth(),
                         colors = ButtonDefaults.filledTonalButtonColors(
                             containerColor = if (!state.canAddMoreActive) colorScheme.surfaceVariant.copy(alpha = 0.5f) else colorScheme.primaryContainer,
@@ -237,7 +239,7 @@ private fun GoalListContent(
                     GoalsTab.values().forEach { tab ->
                         Tab(
                             selected = state.currentTab == tab,
-                            onClick = { viewModel.setTab(tab) },
+                            onClick = { onTabSelected(tab) },
                             text = { Text(tab.name.lowercase().replaceFirstChar { it.titlecase() }) }
                         )
                     }
@@ -295,7 +297,7 @@ private fun GoalCard(
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(2.dp)
-                        .background(colorScheme.surface)
+                        .background(colorScheme.surfaceVariant)
                 ) {
                     Box(
                         modifier = Modifier
@@ -362,6 +364,52 @@ private fun GoalLimitOverlay(
                     style = MaterialTheme.typography.bodyMedium,
                     color = colorScheme.onSurfaceVariant
                 )
+            }
+        }
+    }
+}
+
+@Composable
+private fun DeleteConfirmationDialog(
+    colorScheme: ColorScheme,
+    onDismiss: () -> Unit,
+    onConfirm: () -> Unit
+) {
+    Dialog(onDismissRequest = onDismiss) {
+        Card(
+            shape = RoundedCornerShape(20.dp),
+            colors = CardDefaults.cardColors(containerColor = colorScheme.surface)
+        ) {
+            Column(modifier = Modifier.padding(24.dp)) {
+                Text(
+                    "Delete this goal?",
+                    style = MaterialTheme.typography.titleLarge,
+                    color = colorScheme.onSurface
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    "This action can't be undone.",
+                    color = colorScheme.onSurfaceVariant
+                )
+                Spacer(modifier = Modifier.height(20.dp))
+                Row(
+                    horizontalArrangement = Arrangement.End,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    TextButton(onClick = onDismiss) {
+                        Text("Cancel")
+                    }
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Button(
+                        onClick = onConfirm,
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = colorScheme.errorContainer,
+                            contentColor = colorScheme.onErrorContainer
+                        )
+                    ) {
+                        Text("Delete")
+                    }
+                }
             }
         }
     }
@@ -454,3 +502,45 @@ private fun GoalsUiState.visibleGoals(): List<GoalWithProgress> = when (currentT
     GoalsTab.ACTIVE -> activeGoals
     GoalsTab.COMPLETED -> completedGoals.map { GoalWithProgress(it, 0f) }
 }
+
+@Composable
+private fun Header(currentTheme: ThemeMode, onThemeChange: (ThemeMode) -> Unit) {
+    val colorScheme = MaterialTheme.colorScheme
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Column {
+            Text(
+                text = GOALS_TITLE,
+                style = MaterialTheme.typography.headlineMedium,
+                color = colorScheme.onBackground
+            )
+            Text(
+                text = GOALS_SUBTITLE,
+                style = MaterialTheme.typography.bodyMedium,
+                color = colorScheme.onBackground.copy(alpha = 0.7f)
+            )
+        }
+        FilledIconButton(
+            onClick = {
+                val nextMode = if (currentTheme == ThemeMode.DARK) ThemeMode.LIGHT else ThemeMode.DARK
+                onThemeChange(nextMode)
+            },
+            colors = IconButtonDefaults.filledIconButtonColors(
+                containerColor = colorScheme.surfaceVariant,
+                contentColor = colorScheme.onSurface
+            )
+        ) {
+            Icon(
+                imageVector = if (currentTheme == ThemeMode.DARK) Icons.Filled.LightMode else Icons.Filled.DarkMode,
+                contentDescription = THEME_TOGGLE_DESCRIPTION
+            )
+        }
+    }
+}
+
+private const val GOALS_TITLE = "Goals"
+private const val GOALS_SUBTITLE = "Stay consistent every night"
+private const val THEME_TOGGLE_DESCRIPTION = "Toggle theme"

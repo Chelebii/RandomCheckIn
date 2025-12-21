@@ -9,7 +9,6 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
-import androidx.annotation.RequiresPermission
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
@@ -28,7 +27,6 @@ object NotificationHelper {
      * Surfaces the reminder only when the user can actually receive notifications, preventing
      * confusing silent failures while keeping UI behavior unchanged.
      */
-    @RequiresPermission(Manifest.permission.POST_NOTIFICATIONS)
     fun showCheckInNotification(context: Context) {
         if (!notificationsEnabled(context)) {
             return
