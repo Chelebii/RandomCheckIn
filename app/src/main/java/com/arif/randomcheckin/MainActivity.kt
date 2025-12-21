@@ -155,7 +155,7 @@ fun GoalListScreen(
                             color = colorScheme.onBackground
                         )
                         Text(
-                            text = "Stay consistent every night",
+                            text = "Time is moving, whether you act or not.",
                             style = MaterialTheme.typography.bodyMedium,
                             color = colorScheme.onBackground.copy(alpha = 0.7f)
                         )
