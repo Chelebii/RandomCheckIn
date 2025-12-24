@@ -1,12 +1,15 @@
 package com.arif.randomcheckin.data.model
 
 import java.time.LocalDate
-import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
-import java.time.temporal.ChronoUnit
 
-/** Shared formatter for dd.MM.yyyy goal dates. */
-val goalDateFormatter: DateTimeFormatter = DateTimeFormatter.ofPattern("dd.MM.yyyy")
+/** Converts stored strings into LocalDate objects while tolerating malformed entries. */
+private fun Goal.startDateOrNull(): LocalDate? = parseGoalDateOrNull(startDate)
+
+/** Converts stored strings into LocalDate objects while tolerating malformed entries. */
+private fun Goal.endDateOrNull(): LocalDate? = parseGoalDateOrNull(endDate)
+
+private const val GOAL_DATE_PATTERN = "dd.MM.yyyy"
 
 /** Shared formatter keeps all goal dates aligned with the same display/parsing pattern. */
 val goalDateFormatter: DateTimeFormatter = DateTimeFormatter.ofPattern(GOAL_DATE_PATTERN)

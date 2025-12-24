@@ -12,10 +12,8 @@ import com.arif.randomcheckin.data.model.GoalId
 import com.arif.randomcheckin.data.model.ThemeMode
 import com.arif.randomcheckin.data.model.goalDateFormatter
 import com.arif.randomcheckin.data.model.isActive
-import java.text.SimpleDateFormat
+import com.arif.randomcheckin.notifications.NotificationHelper
 import java.time.LocalDate
-import java.util.Date
-import java.util.Locale
 import java.util.UUID
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
@@ -29,21 +27,14 @@ private const val DATA_STORE_NAME = "goal_store"
 private const val DEFAULT_ACTIVE_WINDOW_START_MIN = 9 * 60
 private const val DEFAULT_ACTIVE_WINDOW_END_MIN = 21 * 60
 private const val MINUTES_PER_DAY = (24 * 60) - 1
-private const val NOTE_DATE_PATTERN = "yyyy-MM-dd"
 
 private val Context.dataStore by preferencesDataStore(name = DATA_STORE_NAME)
 
-/**
- * Central persistence entry for goals, window preferences, and theme. Business rules stay in the
- * ViewModel/domain layer, so this class focuses on consistent serialization and constraint checks.
- */
 class GoalStore(private val context: Context) {
 
     private val GOALS_KEY = stringPreferencesKey("goals_json")
     private val START_MIN_KEY = intPreferencesKey("active_start_min")
     private val END_MIN_KEY = intPreferencesKey("active_end_min")
-    private val LAST_NOTE_DAY_KEY = stringPreferencesKey("last_note_day")
-    private val LAST_NOTE_KEY = stringPreferencesKey("last_note")
     private val THEME_MODE_KEY = stringPreferencesKey("theme_mode")
 
     /** Emits every persisted goal so UI progress bars and tabs stay in sync with storage. */
@@ -55,7 +46,7 @@ class GoalStore(private val context: Context) {
      * Persists a new goal while enforcing business constraints: start date is today, end dates cannot be in the past,
      * and only [MAX_ACTIVE_GOALS] active goals may exist at any time.
      */
-    suspend fun addGoal(title: String, description: String, endDate: String) {
+    suspend fun addGoal(title: String, endDate: String) {
         val trimmedEndDate = endDate.trim()
         context.dataStore.edit { prefs ->
             val storedGoals = prefs.goalList()
@@ -63,7 +54,6 @@ class GoalStore(private val context: Context) {
             val newGoal = Goal(
                 id = UUID.randomUUID().toString(),
                 title = title.trim(),
-                description = description.trim(),
                 startDate = today.format(goalDateFormatter),
                 endDate = trimmedEndDate
             )
@@ -84,7 +74,8 @@ class GoalStore(private val context: Context) {
     /**
      * Updates an existing goal and re-validates the active goal cap so edits cannot sneak past the focus rule.
      */
-    suspend fun updateGoal(goalId: String, title: String, description: String, endDate: String) {
+    suspend fun updateGoal(goalId: String, title: String, endDate: String) {
+        val trimmedEndDate = endDate.trim()
         context.dataStore.edit { prefs ->
             val stored = prefs.goalList()
             val index = stored.indexOfFirst { it.id == goalId }
@@ -93,7 +84,6 @@ class GoalStore(private val context: Context) {
             val updatedList = stored.toMutableList().apply {
                 this[index] = stored[index].copy(
                     title = title.trim(),
-                    description = description.trim(),
                     endDate = trimmedEndDate
                 )
             }
@@ -127,6 +117,10 @@ class GoalStore(private val context: Context) {
         Pair(startMin, endMin)
     }
 
+    fun sendTestNotification(goal: Goal) {
+        NotificationHelper.showGoalTestNotification(context, goal)
+    }
+
     /** Clamps inputs to valid minutes so notifications never read outside a single 24h window. */
     suspend fun setActiveWindow(startMin: Int, endMin: Int) {
         val safeStart = startMin.coerceIn(0, MINUTES_PER_DAY)
@@ -135,18 +129,6 @@ class GoalStore(private val context: Context) {
             prefs[START_MIN_KEY] = safeStart
             prefs[END_MIN_KEY] = safeEnd
         }
-    }
-
-    suspend fun saveDailyNote(note: String) {
-        val today = SimpleDateFormat(NOTE_DATE_PATTERN, Locale.getDefault()).format(Date())
-        context.dataStore.edit { prefs ->
-            prefs[LAST_NOTE_DAY_KEY] = today
-            prefs[LAST_NOTE_KEY] = note
-        }
-    }
-
-    fun lastDailyNoteFlow(): Flow<Pair<String?, String?>> = context.dataStore.data.map { prefs ->
-        Pair(prefs[LAST_NOTE_DAY_KEY], prefs[LAST_NOTE_KEY])
     }
 
     fun themeModeFlow(): Flow<ThemeMode> = context.dataStore.data.map { prefs ->
@@ -174,7 +156,6 @@ class GoalStore(private val context: Context) {
 
 private const val FIELD_ID = "id"
 private const val FIELD_TITLE = "title"
-private const val FIELD_DESCRIPTION = "description"
 private const val FIELD_START_DATE = "startDate"
 private const val FIELD_END_DATE = "endDate"
 
@@ -186,7 +167,6 @@ internal fun String.toGoalList(): List<Goal> {
         goals += Goal(
             id = entry.getString(FIELD_ID),
             title = entry.getString(FIELD_TITLE),
-            description = entry.getString(FIELD_DESCRIPTION),
             // Legacy entries may lack a start date; fall back to endDate to preserve ordering.
             startDate = entry.optString(FIELD_START_DATE, entry.getString(FIELD_END_DATE)),
             endDate = entry.getString(FIELD_END_DATE)
@@ -201,7 +181,6 @@ internal fun List<Goal>.toJson(): String {
         val json = JSONObject()
         json.put(FIELD_ID, goal.id)
         json.put(FIELD_TITLE, goal.title)
-        json.put(FIELD_DESCRIPTION, goal.description)
         json.put(FIELD_START_DATE, goal.startDate)
         json.put(FIELD_END_DATE, goal.endDate)
         array.put(json)

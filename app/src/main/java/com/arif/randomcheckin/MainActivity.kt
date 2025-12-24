@@ -102,6 +102,7 @@ fun GoalListScreen(
     val state by viewModel.state.collectAsState()
     val isActiveTab = state.currentTab == GoalsTab.ACTIVE
     val visibleGoals by remember(state) { derivedStateOf { state.visibleGoals() } }
+
     val startCreatingGoal: () -> Unit = {
         if (state.canAddMoreActive) goalEditor = GoalEditorState.Creating else viewModel.showLimitInfo()
     }
@@ -113,15 +114,14 @@ fun GoalListScreen(
     if (editorState !is GoalEditorState.Hidden) {
         AddGoalScreen(
             initialTitle = editorState.initialTitle(),
-            initialDescription = editorState.initialDescription(),
             initialEndDate = editorState.initialEndDate(),
             titleText = if (editorState is GoalEditorState.Editing) "Edit Goal" else "Add Goal",
-            onSave = { title, desc, endDate ->
+            onSave = { title, endDate ->
                 scope.launch {
                     try {
                         when (editorState) {
-                            GoalEditorState.Creating -> viewModel.addGoal(title, desc, endDate)
-                            is GoalEditorState.Editing -> viewModel.updateGoal(editorState.goal.id, title, desc, endDate)
+                            GoalEditorState.Creating -> viewModel.addGoal(title, endDate)
+                            is GoalEditorState.Editing -> viewModel.updateGoal(editorState.goal.id, title, endDate)
                             GoalEditorState.Hidden -> Unit
                         }
                         goalEditor = GoalEditorState.Hidden
@@ -137,6 +137,7 @@ fun GoalListScreen(
 
     Surface(color = colorScheme.background, modifier = Modifier.fillMaxSize()) {
         Column(modifier = Modifier.fillMaxSize()) {
+
             Column(
                 modifier = Modifier
                     .weight(1f)
@@ -155,7 +156,7 @@ fun GoalListScreen(
                             color = colorScheme.onBackground
                         )
                         Text(
-                            text = "Stay consistent every night",
+                            text = "Time is moving, whether you act or not.",
                             style = MaterialTheme.typography.bodyMedium,
                             color = colorScheme.onBackground.copy(alpha = 0.7f)
                         )
@@ -188,7 +189,8 @@ fun GoalListScreen(
                     onEditGoal = { goal -> goalEditor = GoalEditorState.Editing(goal) },
                     onDeleteGoal = viewModel::requestDelete,
                     onAddGoal = startCreatingGoal,
-                    bottomContentPadding = if (isActiveTab) 120.dp else 80.dp
+                    bottomContentPadding = if (isActiveTab) 120.dp else 80.dp,
+                    onTestNotification = viewModel::sendTestNotification
                 )
             }
 
@@ -225,6 +227,8 @@ fun GoalListScreen(
             }
         }
     }
+
+    // remove popup usage
 }
 
 @Composable
@@ -236,7 +240,8 @@ private fun GoalCard(
     progress: Float?,
     onComplete: () -> Unit,
     onEdit: () -> Unit,
-    onDelete: () -> Unit
+    onDelete: () -> Unit,
+    onTestNotification: (() -> Unit)? = null
 ) {
     ElevatedCard(
         modifier = Modifier.fillMaxWidth(),
@@ -253,6 +258,15 @@ private fun GoalCard(
                     Text(goal.title, style = MaterialTheme.typography.titleLarge, color = colorScheme.onSurface)
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    if (showComplete) {
+                        IconButton(onClick = onComplete) {
+                            Icon(
+                                imageVector = Icons.Filled.CheckCircle,
+                                contentDescription = "Mark as completed",
+                                tint = colorScheme.primary
+                            )
+                        }
+                    }
                     if (showEdit) {
                         IconButton(onClick = onEdit) {
                             Icon(Icons.Filled.Edit, contentDescription = "Edit goal", tint = colorScheme.onSurfaceVariant)
@@ -264,8 +278,6 @@ private fun GoalCard(
                 }
             }
             Spacer(modifier = Modifier.height(6.dp))
-            Text(goal.description, color = colorScheme.onSurfaceVariant)
-            Spacer(modifier = Modifier.height(10.dp))
             Text("Ends ${goal.endDate}", color = colorScheme.onSurfaceVariant)
             if (progress != null) {
                 val barColor = if (progress <= 0.1f) colorScheme.error else colorScheme.primary
@@ -283,18 +295,18 @@ private fun GoalCard(
                             .background(barColor)
                     )
                 }
-            }
-            if (showComplete) {
-                IconButton(
-                    onClick = onComplete,
-                    modifier = Modifier.align(Alignment.End)
-                ) {
-                    Icon(
-                        imageVector = Icons.Filled.CheckCircle,
-                        contentDescription = "Mark as completed",
-                        tint = colorScheme.primary
-                    )
+                Spacer(modifier = Modifier.height(12.dp))
+                onTestNotification?.let {
+                    FilledTonalButton(
+                        onClick = it,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text("Test notification")
+                    }
+                    Spacer(modifier = Modifier.height(12.dp))
                 }
+            } else {
+                Spacer(modifier = Modifier.height(12.dp))
             }
         }
     }
@@ -356,7 +368,8 @@ private fun GoalsList(
     onEditGoal: (Goal) -> Unit,
     onDeleteGoal: (Goal) -> Unit,
     onAddGoal: () -> Unit,
-    bottomContentPadding: Dp
+    bottomContentPadding: Dp,
+    onTestNotification: (Goal) -> Unit
 ) {
     if (goals.isEmpty()) {
         Box(
@@ -398,7 +411,10 @@ private fun GoalsList(
                     progress = if (isActiveTab) goalWithProgress.remainingProgress else null,
                     onComplete = { onCompleteGoal(goalWithProgress.goal) },
                     onEdit = { onEditGoal(goalWithProgress.goal) },
-                    onDelete = { onDeleteGoal(goalWithProgress.goal) }
+                    onDelete = { onDeleteGoal(goalWithProgress.goal) },
+                    onTestNotification = if (isActiveTab) {
+                        { onTestNotification(goalWithProgress.goal) }
+                    } else null
                 )
             }
         }
@@ -417,11 +433,6 @@ private sealed interface GoalEditorState {
 private fun GoalEditorState.initialTitle() = when (this) {
     GoalEditorState.Hidden, GoalEditorState.Creating -> ""
     is GoalEditorState.Editing -> goal.title
-}
-
-private fun GoalEditorState.initialDescription() = when (this) {
-    GoalEditorState.Hidden, GoalEditorState.Creating -> ""
-    is GoalEditorState.Editing -> goal.description
 }
 
 private fun GoalEditorState.initialEndDate() = when (this) {
