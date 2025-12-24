@@ -23,10 +23,9 @@ private val ALLOWED_GOAL_YEARS = 2024..2066
 @Composable
 fun AddGoalScreen(
     initialTitle: String = "",
-    initialDescription: String = "",
     initialEndDate: String = "",
     titleText: String = if (initialTitle.isBlank()) "Add Goal" else "Edit Goal",
-    onSave: (String, String, String) -> Unit,
+    onSave: (String, String) -> Unit,
     onCancel: () -> Unit
 ) {
     val dateFormatter = remember { DateTimeFormatter.ofPattern("dd.MM.yyyy") }
@@ -34,7 +33,6 @@ fun AddGoalScreen(
     val focusManager = LocalFocusManager.current
 
     var title by remember { mutableStateOf(initialTitle) }
-    var description by remember { mutableStateOf(initialDescription) }
     var endDate by rememberSaveable { mutableStateOf(initialEndDate) }
     var dateError by remember { mutableStateOf<String?>(null) }
     var showDatePicker by rememberSaveable { mutableStateOf(false) }
@@ -108,15 +106,6 @@ fun AddGoalScreen(
 
         Spacer(modifier = Modifier.height(8.dp))
 
-        OutlinedTextField(
-            value = description,
-            onValueChange = { description = it },
-            label = { Text("Description") },
-            modifier = Modifier.fillMaxWidth()
-        )
-
-        Spacer(modifier = Modifier.height(8.dp))
-
         val interactionSource = remember { MutableInteractionSource() }
         // Field stays read-only to force usage of the picker and avoid invalid manual input.
         OutlinedTextField(
@@ -152,7 +141,7 @@ fun AddGoalScreen(
             Button(onClick = {
                 val trimmedEndDate = endDate.trim()
                 if (trimmedEndDate.isValidGoalDate(today)) {
-                    onSave(title, description, trimmedEndDate)
+                    onSave(title, trimmedEndDate)
                 } else {
                     dateError = "Tarih bugün veya sonrası olmalı"
                 }

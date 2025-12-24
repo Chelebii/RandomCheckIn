@@ -84,7 +84,11 @@ class GoalsViewModel(private val repository: GoalRepository) : ViewModel() {
     }
 
     fun calculateRemainingProgress(goal: Goal, reference: LocalDateTime = LocalDateTime.now()): Float =
-        goal.remainingProgress(reference)
+        goal.remainingProgress(reference.toLocalDate())
+
+    fun sendTestNotification(goal: Goal) {
+        repository.sendTestNotification(goal)
+    }
 
     fun markCompleted(goal: Goal) {
         viewModelScope.launch {
@@ -93,12 +97,12 @@ class GoalsViewModel(private val repository: GoalRepository) : ViewModel() {
         }
     }
 
-    suspend fun addGoal(title: String, description: String, endDate: String) {
-        repository.addGoal(title, description, endDate)
+    suspend fun addGoal(title: String, endDate: String) {
+        repository.addGoal(title, "", endDate)
     }
 
-    suspend fun updateGoal(goalId: String, title: String, description: String, endDate: String) {
-        repository.updateGoal(goalId, title, description, endDate)
+    suspend fun updateGoal(goalId: String, title: String, endDate: String) {
+        repository.updateGoal(goalId, title, "", endDate)
     }
 
     private fun List<Goal>.toSnapshot(): GoalsSnapshot {
@@ -106,7 +110,7 @@ class GoalsViewModel(private val repository: GoalRepository) : ViewModel() {
         val today = now.toLocalDate()
         val (active, completed) = partition { it.isActive(today) }
         return GoalsSnapshot(
-            active = active.map { GoalWithProgress(it, it.remainingProgress(now)) },
+            active = active.map { GoalWithProgress(it, it.remainingProgress(today)) },
             completed = completed,
             canAddMoreActive = active.size < MAX_ACTIVE_GOALS
         )
