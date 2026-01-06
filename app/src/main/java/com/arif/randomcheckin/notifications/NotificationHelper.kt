@@ -6,6 +6,7 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.content.Context
 import android.content.pm.PackageManager
+import android.graphics.BitmapFactory
 import android.os.Build
 import androidx.annotation.RequiresPermission
 import androidx.core.app.NotificationCompat
@@ -46,9 +47,11 @@ object NotificationHelper {
 
         val title = goal.title.ifBlank { context.getString(R.string.app_name) }
         val notificationId = TEST_REQUEST_CODE_BASE + goal.id.hashCode()
+        val launcherIcon = BitmapFactory.decodeResource(context.resources, R.mipmap.ic_launcher)
 
         val notification = NotificationCompat.Builder(context, CHANNEL_ID)
             .setSmallIcon(R.mipmap.ic_launcher)
+            .setLargeIcon(launcherIcon)
             .setContentTitle(title)
             .setContentText(TEST_MESSAGE)
             .setStyle(NotificationCompat.BigTextStyle().bigText(TEST_MESSAGE))
@@ -91,8 +94,10 @@ object NotificationHelper {
     }
 
     private fun buildCheckInNotification(context: Context): Notification {
+        val launcherIcon = BitmapFactory.decodeResource(context.resources, R.mipmap.ic_launcher)
         return NotificationCompat.Builder(context, CHANNEL_ID)
             .setSmallIcon(R.mipmap.ic_launcher)
+            .setLargeIcon(launcherIcon)
             .setContentTitle(TITLE_CHECK_IN)
             .setContentText(MESSAGE_CHECK_IN)
             .setStyle(NotificationCompat.BigTextStyle().bigText(MESSAGE_CHECK_IN))

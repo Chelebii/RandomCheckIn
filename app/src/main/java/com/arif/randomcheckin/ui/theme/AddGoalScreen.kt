@@ -15,9 +15,10 @@ import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
+import com.arif.randomcheckin.data.model.Goal
 
 private const val END_DATE_PATTERN = "\\d{2}\\.\\d{2}\\.\\d{4}"
-private val ALLOWED_GOAL_YEARS = 2024..2066
+private val MAX_GOAL_END_DATE: LocalDate = LocalDate.parse(Goal.MAX_END_DATE)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -43,11 +44,12 @@ fun AddGoalScreen(
 
     val datePickerState = rememberDatePickerState(
         initialSelectedDateMillis = initialMillis,
+        yearRange = today.year..MAX_GOAL_END_DATE.year,
         selectableDates = object : SelectableDates {
             override fun isSelectableDate(utcTimeMillis: Long): Boolean {
                 val date = Instant.ofEpochMilli(utcTimeMillis)
                     .atZone(ZoneId.systemDefault()).toLocalDate()
-                return !date.isBefore(today)
+                return !date.isBefore(today) && !date.isAfter(MAX_GOAL_END_DATE)
             }
         }
     )
@@ -143,7 +145,7 @@ fun AddGoalScreen(
                 if (trimmedEndDate.isValidGoalDate(today)) {
                     onSave(title, trimmedEndDate)
                 } else {
-                    dateError = "Tarih bugün veya sonrası olmalı"
+                    dateError = "Date must be between today and 31.12.2029"
                 }
             }) {
                 Text("Save")
@@ -167,6 +169,7 @@ private fun parseInitialDateMillis(
     }
     return runCatching {
         LocalDate.parse(initialEndDate, formatter)
+            .let { if (it.isAfter(MAX_GOAL_END_DATE)) MAX_GOAL_END_DATE else it }
             .atStartOfDay(ZoneId.systemDefault())
             .toInstant()
             .toEpochMilli()
@@ -181,9 +184,8 @@ private fun String.isValidGoalDate(today: LocalDate = LocalDate.now()): Boolean 
     val year = parts[2].toIntOrNull() ?: return false
     if (day !in 1..31) return false
     if (month !in 1..12) return false
-    if (year !in ALLOWED_GOAL_YEARS) return false
     val parsed = runCatching {
         LocalDate.of(year, month, day)
     }.getOrNull() ?: return false
-    return !parsed.isBefore(today)
+    return !parsed.isBefore(today) && !parsed.isAfter(MAX_GOAL_END_DATE)
 }

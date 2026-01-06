@@ -16,4 +16,8 @@ data class Goal(
     val title: String,
     val startDate: String,
     val endDate: String
-)
+) {
+    companion object {
+        const val MAX_END_DATE: String = "2029-12-31"
+    }
+}

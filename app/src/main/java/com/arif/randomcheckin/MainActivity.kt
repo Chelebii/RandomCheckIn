@@ -228,6 +228,24 @@ fun GoalListScreen(
         }
     }
 
+    state.pendingDelete?.let { goalToDelete ->
+        AlertDialog(
+            onDismissRequest = viewModel::cancelDelete,
+            confirmButton = {
+                TextButton(onClick = viewModel::confirmDelete) {
+                    Text("Delete")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = viewModel::cancelDelete) {
+                    Text("Cancel")
+                }
+            },
+            title = { Text("Delete goal?") },
+            text = { Text("This can’t be undone.") }
+        )
+    }
+
     // remove popup usage
 }
 
